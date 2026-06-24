@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const { PDFParse } = require('pdf-parse');
+const mammoth = require('mammoth');
 
 // Models
 const DocuUser = require('../models/DocuUser');
@@ -31,6 +34,17 @@ const emailTransporter = nodemailer.createTransport({
     }
 });
 
+const sanitizeTextForPdf = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/[\u201c\u201d]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u2014\u2013]/g, '-')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/[^\x20-\x7E]/g, '');
+};
+
 // Middleware: Authenticate Docu JWT
 const authenticateDocuToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -43,6 +57,37 @@ const authenticateDocuToken = (req, res, next) => {
         next();
     });
 };
+
+const fetchUserRole = async (req, res, next) => {
+    try {
+        const member = await DocuWorkspaceMember.findOne({
+            workspace_id: req.user.workspaceId,
+            user_id: req.user.id,
+            status: 'joined'
+        });
+        if (!member) {
+            return res.status(403).json({ message: 'User is not a member of this workspace' });
+        }
+        req.user.role = member.role; // 'owner', 'admin', 'member', 'viewer'
+        next();
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+const requireCreateSendPermission = [authenticateDocuToken, fetchUserRole, (req, res, next) => {
+    if (req.user.role === 'viewer') {
+        return res.status(403).json({ message: 'Permission denied. Viewer role cannot perform this action.' });
+    }
+    next();
+}];
+
+const requireAdminPermission = [authenticateDocuToken, fetchUserRole, (req, res, next) => {
+    if (req.user.role !== 'admin' && req.user.role !== 'owner') {
+        return res.status(403).json({ message: 'Permission denied. Only administrator or owner can perform this action.' });
+    }
+    next();
+}];
 
 // Multer setup
 const docuUpload = multer({
@@ -60,6 +105,11 @@ const docuUpload = multer({
             cb(new Error('Only PDF files are allowed.'), false);
         }
     },
+    limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit
+});
+
+const parseUpload = multer({
+    storage: multer.memoryStorage(),
     limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit
 });
 
@@ -108,17 +158,41 @@ router.post('/auth/signup', async (req, res) => {
             return res.status(400).json({ message: 'Full name, email, and password are required' });
         }
 
-        const existing = await DocuUser.findOne({ email });
-        if (existing) return res.status(400).json({ message: 'User with this email already exists' });
+        let user = await DocuUser.findOne({ email });
+        let isInvitedNewUser = false;
 
-        const password_hash = await bcrypt.hash(password, 10);
-        const user = new DocuUser({
-            full_name,
-            email,
-            password_hash,
-            email_verified: true // auto-verify for convenience
-        });
-        const savedUser = await user.save();
+        if (user) {
+            const hasInvitedMembership = await DocuWorkspaceMember.exists({ user_id: user._id, status: 'invited' });
+            if (!user.email_verified && hasInvitedMembership) {
+                isInvitedNewUser = true;
+            } else {
+                return res.status(400).json({ message: 'User with this email already exists' });
+            }
+        }
+
+        let savedUser;
+        if (isInvitedNewUser) {
+            const password_hash = await bcrypt.hash(password, 10);
+            user.full_name = full_name;
+            user.password_hash = password_hash;
+            user.email_verified = true;
+            savedUser = await user.save();
+
+            // Mark invited memberships as joined
+            await DocuWorkspaceMember.updateMany(
+                { user_id: user._id, status: 'invited' },
+                { status: 'joined' }
+            );
+        } else {
+            const password_hash = await bcrypt.hash(password, 10);
+            user = new DocuUser({
+                full_name,
+                email,
+                password_hash,
+                email_verified: true
+            });
+            savedUser = await user.save();
+        }
 
         // Create Default Workspace
         const wsName = workspace_name || `${full_name}'s Workspace`;
@@ -137,21 +211,26 @@ router.post('/auth/signup', async (req, res) => {
         });
         await membership.save();
 
+        // Find active/first workspace to sign the JWT token
+        const invitedMembership = await DocuWorkspaceMember.findOne({ user_id: savedUser._id, status: 'joined', role: { $ne: 'owner' } }).populate('workspace_id');
+        const activeWs = invitedMembership ? invitedMembership.workspace_id : savedWs;
+        const activeRole = invitedMembership ? invitedMembership.role : 'owner';
+
         // Generate Token
         const token = jwt.sign(
-            { id: savedUser._id, email: savedUser.email, workspaceId: savedWs._id },
+            { id: savedUser._id, email: savedUser.email, workspaceId: activeWs._id },
             process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
             { expiresIn: '7d' }
         );
 
         await logAuditEvent({
-            workspace_id: savedWs._id,
+            workspace_id: activeWs._id,
             user_id: savedUser._id,
             event_type: 'USER_SIGNED_UP',
             metadata: { email: savedUser.email }
         });
 
-        res.status(201).json({ token, user: { id: savedUser._id, full_name, email }, workspace: savedWs });
+        res.status(201).json({ token, user: { id: savedUser._id, full_name: savedUser.full_name, email: savedUser.email }, workspace: activeWs, role: activeRole });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -185,7 +264,7 @@ router.post('/auth/login', async (req, res) => {
             metadata: { email: user.email }
         });
 
-        res.json({ token, user: { id: user._id, full_name: user.full_name, email: user.email }, workspace: member.workspace_id });
+        res.json({ token, user: { id: user._id, full_name: user.full_name, email: user.email }, workspace: member.workspace_id, role: member.role });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -202,7 +281,8 @@ router.get('/auth/me', authenticateDocuToken, async (req, res) => {
         res.json({
             user,
             workspace: activeMembership ? activeMembership.workspace_id : null,
-            workspaces: members.map(m => m.workspace_id)
+            workspaces: members.map(m => m.workspace_id),
+            role: activeMembership ? activeMembership.role : 'member'
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -252,7 +332,7 @@ router.get('/dashboard/activity', authenticateDocuToken, async (req, res) => {
 // 3. DOCUMENTS CRUD
 // ==========================================
 
-router.post('/documents/upload', authenticateDocuToken, docuUpload.single('file'), async (req, res) => {
+router.post('/documents/upload', requireCreateSendPermission, docuUpload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ message: 'No PDF file uploaded' });
     try {
         const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
@@ -265,6 +345,75 @@ router.post('/documents/upload', authenticateDocuToken, docuUpload.single('file'
         res.json({ url: fileUrl, filename: req.file.originalname, original_hash: originalHash });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+router.post('/documents/parse', requireCreateSendPermission, parseUpload.single('file'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No document file uploaded' });
+    try {
+        const buffer = req.file.buffer;
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        let html = '';
+
+        if (ext === '.pdf' || req.file.mimetype === 'application/pdf') {
+            const pdf = new PDFParse(new Uint8Array(buffer));
+            const data = await pdf.getText();
+            const rawText = data.text || '';
+            const lines = rawText.split(/\r?\n/);
+            let htmlResult = '';
+            let inList = false;
+
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) {
+                    if (inList) {
+                        htmlResult += '</ul>';
+                        inList = false;
+                    }
+                    continue;
+                }
+
+                const isHeading = line.startsWith('###') || (line.toUpperCase() === line && line.length < 60 && !line.startsWith('-') && !line.startsWith('*'));
+                const isListItem = line.startsWith('-') || line.startsWith('*') || /^\d+\.\s/.test(line);
+
+                if (isListItem) {
+                    if (!inList) {
+                        htmlResult += '<ul style="margin-left: 20px; list-style-type: disc;">';
+                        inList = true;
+                    }
+                    const cleanItem = line.replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, '');
+                    htmlResult += `<li>${cleanItem}</li>`;
+                } else {
+                    if (inList) {
+                        htmlResult += '</ul>';
+                        inList = false;
+                    }
+                    if (isHeading) {
+                        const cleanHeading = line.replace(/^###\s*/, '');
+                        htmlResult += `<h2>${cleanHeading}</h2>`;
+                    } else {
+                        htmlResult += `<p>${line}</p>`;
+                    }
+                }
+            }
+            if (inList) {
+                htmlResult += '</ul>';
+            }
+            html = htmlResult;
+        } else if (ext === '.docx' || req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            const data = await mammoth.convertToHtml({ buffer: buffer });
+            html = data.value;
+        } else {
+            return res.status(400).json({ message: 'Unsupported file type. Only PDF and DOCX files are allowed.' });
+        }
+
+        res.json({
+            html: html || '',
+            name: path.basename(req.file.originalname, ext)
+        });
+    } catch (err) {
+        console.error('Error parsing document:', err);
+        res.status(500).json({ message: 'Failed to extract text from document: ' + err.message });
     }
 });
 
@@ -285,7 +434,229 @@ router.get('/documents', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/documents', authenticateDocuToken, async (req, res) => {
+router.post('/documents/create-from-text', requireCreateSendPermission, async (req, res) => {
+    try {
+        const { document_name, content, blocks } = req.body;
+        if (!document_name || (!content && !blocks)) {
+            return res.status(400).json({ message: 'Document name and content/blocks are required' });
+        }
+
+        // Create PDF
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        
+        let page = pdfDoc.addPage([595.28, 841.89]); // A4
+        let { width, height } = page.getSize();
+        
+        const margin = 50;
+        let y = height - margin;
+        const widthLimit = width - (margin * 2);
+        
+        // Draw Document Title
+        page.drawText(document_name.toUpperCase(), {
+            x: margin,
+            y: y - 10,
+            size: 16,
+            font: boldFont,
+            color: rgb(0, 0, 0)
+        });
+        y -= 45;
+
+        if (blocks && Array.isArray(blocks)) {
+            for (const block of blocks) {
+                const type = block.type || 'p';
+                const text = sanitizeTextForPdf(block.text || '');
+                
+                if (text.trim() === '') {
+                    y -= 10;
+                    continue;
+                }
+
+                let currentFont = font;
+                let fontSize = 10;
+                let leading = 14;
+                let blockMarginBefore = 4;
+                let blockMarginAfter = 8;
+                let leftIndent = margin;
+                let textColor = rgb(0.1, 0.1, 0.1);
+
+                if (type === 'h1') {
+                    currentFont = boldFont;
+                    fontSize = 18;
+                    leading = 22;
+                    blockMarginBefore = 16;
+                    blockMarginAfter = 10;
+                    textColor = rgb(0.05, 0.05, 0.1);
+                } else if (type === 'h2') {
+                    currentFont = boldFont;
+                    fontSize = 14;
+                    leading = 18;
+                    blockMarginBefore = 12;
+                    blockMarginAfter = 6;
+                    textColor = rgb(0.05, 0.05, 0.15);
+                } else if (type === 'bullet') {
+                    currentFont = font;
+                    fontSize = 10;
+                    leading = 14;
+                    blockMarginBefore = 2;
+                    blockMarginAfter = 4;
+                    leftIndent = margin + 20;
+                }
+
+                y -= blockMarginBefore;
+
+                const textLimit = width - (leftIndent + margin);
+                
+                if (type === 'bullet') {
+                    if (y - leading < margin) {
+                        page = pdfDoc.addPage([595.28, 841.89]);
+                        y = height - margin;
+                    }
+                    page.drawText('•', {
+                        x: margin + 8,
+                        y: y,
+                        size: fontSize,
+                        font: currentFont,
+                        color: textColor
+                    });
+                }
+
+                const words = text.split(' ');
+                let currentLine = '';
+
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
+                    const widthOfTest = currentFont.widthOfTextAtSize(testLine, fontSize);
+
+                    if (widthOfTest > textLimit) {
+                        if (y - leading < margin) {
+                            page = pdfDoc.addPage([595.28, 841.89]);
+                            y = height - margin;
+                        }
+                        page.drawText(currentLine, {
+                            x: leftIndent,
+                            y: y,
+                            size: fontSize,
+                            font: currentFont,
+                            color: textColor
+                        });
+                        y -= leading;
+                        currentLine = word;
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+
+                if (currentLine) {
+                    if (y - leading < margin) {
+                        page = pdfDoc.addPage([595.28, 841.89]);
+                        y = height - margin;
+                    }
+                    page.drawText(currentLine, {
+                        x: leftIndent,
+                        y: y,
+                        size: fontSize,
+                        font: currentFont,
+                        color: textColor
+                    });
+                    y -= leading;
+                }
+
+                y -= blockMarginAfter;
+            }
+        } else if (content) {
+            const lines = content.split('\n');
+            for (const rawLine of lines) {
+                const cleanLine = sanitizeTextForPdf(rawLine.trim());
+                if (cleanLine === '') {
+                    y -= 12;
+                    continue;
+                }
+
+                const isHeading = cleanLine.startsWith('###') || (cleanLine.startsWith('**') && cleanLine.endsWith('**')) || (cleanLine.toUpperCase() === cleanLine && cleanLine.length < 50);
+                const currentFont = isHeading ? boldFont : font;
+                const fontSize = isHeading ? 12 : 10;
+                const leading = isHeading ? 18 : 14;
+
+                const words = cleanLine.replace(/^###\s*/, '').replace(/^\*\*\s*/, '').replace(/\*\*\s*$/, '').split(' ');
+                let currentLine = '';
+                
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
+                    const widthOfTest = currentFont.widthOfTextAtSize(testLine, fontSize);
+                    
+                    if (widthOfTest > widthLimit) {
+                        if (y - leading < margin) {
+                            page = pdfDoc.addPage([595.28, 841.89]);
+                            y = height - margin;
+                        }
+                        
+                        page.drawText(currentLine, {
+                            x: margin,
+                            y: y,
+                            size: fontSize,
+                            font: currentFont,
+                            color: rgb(0.1, 0.1, 0.1)
+                        });
+                        y -= leading;
+                        currentLine = word;
+                    } else {
+                        currentLine = testLine;
+                    }
+                }
+                
+                if (currentLine) {
+                    if (y - leading < margin) {
+                        page = pdfDoc.addPage([595.28, 841.89]);
+                        y = height - margin;
+                    }
+                    page.drawText(currentLine, {
+                        x: margin,
+                        y: y,
+                        size: fontSize,
+                        font: currentFont,
+                        color: rgb(0.1, 0.1, 0.1)
+                    });
+                    y -= leading + 4;
+                }
+            }
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        const filename = `docu-text-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.pdf`;
+        const localPath = path.join(__dirname, '../uploads', filename);
+        
+        if (!fs.existsSync(path.join(__dirname, '../uploads'))) {
+            fs.mkdirSync(path.join(__dirname, '../uploads'), { recursive: true });
+        }
+        
+        fs.writeFileSync(localPath, pdfBytes);
+        
+        const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${filename}`;
+        const hash = crypto.createHash('sha256').update(pdfBytes).digest('hex');
+
+        const doc = new DocuDocumentNew({
+            workspace_id: req.user.workspaceId,
+            owner_id: req.user.id,
+            document_name: document_name,
+            original_file_url: fileUrl,
+            original_hash: hash,
+            fields: [],
+            recipients: [],
+            status: 'draft',
+            expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        });
+
+        const saved = await doc.save();
+        res.status(201).json(saved);
+    } catch (err) {
+        console.error('Error generating PDF from text:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.post('/documents', requireCreateSendPermission, async (req, res) => {
     try {
         const { document_name, original_file_url, original_hash, fields, recipients, expires_at } = req.body;
         
@@ -325,7 +696,7 @@ router.get('/documents/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.patch('/documents/:id', authenticateDocuToken, async (req, res) => {
+router.patch('/documents/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
@@ -353,7 +724,7 @@ router.patch('/documents/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.delete('/documents/:id', authenticateDocuToken, async (req, res) => {
+router.delete('/documents/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOneAndDelete({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
@@ -367,7 +738,7 @@ router.delete('/documents/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/documents/:id/archive', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/archive', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOneAndUpdate(
             { _id: req.params.id, workspace_id: req.user.workspaceId },
@@ -389,7 +760,7 @@ router.post('/documents/:id/archive', authenticateDocuToken, async (req, res) =>
     }
 });
 
-router.post('/documents/:id/cancel', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/cancel', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOneAndUpdate(
             { _id: req.params.id, workspace_id: req.user.workspaceId },
@@ -411,7 +782,7 @@ router.post('/documents/:id/cancel', authenticateDocuToken, async (req, res) => 
     }
 });
 
-router.post('/documents/:id/duplicate', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/duplicate', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
@@ -453,7 +824,7 @@ router.post('/documents/:id/duplicate', authenticateDocuToken, async (req, res) 
 // 4. FIELDS BULK-SAVE
 // ==========================================
 
-router.post('/documents/:id/fields/bulk-save', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/fields/bulk-save', requireCreateSendPermission, async (req, res) => {
     try {
         const { fields, recipients } = req.body;
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
@@ -473,7 +844,7 @@ router.post('/documents/:id/fields/bulk-save', authenticateDocuToken, async (req
 // 5. DISPATCH FLOW (SEND SIGNING LINK)
 // ==========================================
 
-router.post('/documents/:id/send', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/send', requireCreateSendPermission, async (req, res) => {
     try {
         const { message, expirationDays } = req.body;
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
@@ -488,12 +859,34 @@ router.post('/documents/:id/send', authenticateDocuToken, async (req, res) => {
         doc.status = 'sent';
         doc.sent_at = new Date();
 
-        // Assign tokens to any new recipients
+        // Assign tokens to all recipients
         doc.recipients.forEach(r => {
             if (!r.secure_token) {
                 r.secure_token = crypto.randomBytes(32).toString('hex');
             }
         });
+
+        // Sequential mode: set all to pending, then activate only the first signer
+        // Parallel mode: set all signers to sent immediately
+        if (doc.signing_order_enabled) {
+            const sortedSigners = [...doc.recipients]
+                .filter(r => r.role === 'signer')
+                .sort((a, b) => a.signing_order - b.signing_order);
+            doc.recipients.forEach(r => {
+                // CC and viewers stay pending (they receive completion email later)
+                if (r.role === 'signer') r.status = 'pending';
+            });
+            if (sortedSigners.length > 0) {
+                // Activate only the first signer
+                const firstSigner = doc.recipients.find(r => r._id.toString() === sortedSigners[0]._id.toString());
+                if (firstSigner) firstSigner.status = 'sent';
+            }
+        } else {
+            // Parallel: activate all signers simultaneously
+            doc.recipients.forEach(r => {
+                if (r.role === 'signer') r.status = 'sent';
+            });
+        }
 
         const savedDoc = await doc.save();
 
@@ -530,12 +923,16 @@ router.post('/documents/:id/send', authenticateDocuToken, async (req, res) => {
               </div>
             `;
 
-            await emailTransporter.sendMail({
-                from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
-                to: recipientToNotify.email,
-                subject: `Please Sign: ${savedDoc.document_name}`,
-                html: emailHtml
-            });
+            try {
+                await emailTransporter.sendMail({
+                    from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                    to: recipientToNotify.email,
+                    subject: `Please Sign: ${savedDoc.document_name}`,
+                    html: emailHtml
+                });
+            } catch (emailErr) {
+                console.error('[EMAIL] Failed to send initial sign request (non-fatal):', emailErr.message);
+            }
 
             await logAuditEvent({
                 workspace_id: req.user.workspaceId,
@@ -553,7 +950,7 @@ router.post('/documents/:id/send', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/documents/:id/resend', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/resend', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
@@ -629,6 +1026,11 @@ router.get('/public/sign/:token', async (req, res) => {
             });
 
             return res.json({ state: 'expired' });
+        }
+
+        // Block sequential signer who has not been activated yet
+        if (recipient.status === 'pending') {
+            return res.json({ doc, recipient, state: 'not_your_turn' });
         }
 
         // Mark viewed
@@ -750,7 +1152,7 @@ router.post('/public/sign/:token/complete', async (req, res) => {
                 metadata: { final_file_url: finalFileUrl, hash: finalHash }
             });
 
-            // Send completion email to all signers + owner
+            // Send completion email to all signers + owner (non-blocking)
             const owner = await DocuUser.findById(doc.owner_id);
             const allEmails = [...doc.recipients.map(r => r.email), owner?.email].filter(Boolean);
 
@@ -765,29 +1167,40 @@ router.post('/public/sign/:token/complete', async (req, res) => {
               </div>
             `;
 
-            for (const mail of allEmails) {
-                await emailTransporter.sendMail({
-                    from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
-                    to: mail,
-                    subject: `Completed: ${doc.document_name}`,
-                    html: emailHtml
-                });
+            try {
+                for (const mail of allEmails) {
+                    await emailTransporter.sendMail({
+                        from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                        to: mail,
+                        subject: `Completed: ${doc.document_name}`,
+                        html: emailHtml
+                    });
+                }
+            } catch (emailErr) {
+                console.error('[EMAIL] Failed to send completion emails (non-fatal):', emailErr.message);
             }
 
             // Trigger notification for owner
-            await createNotification({
-                workspace_id: doc.workspace_id,
-                user_id: doc.owner_id,
-                document_id: doc._id,
-                type: 'completed',
-                title: 'Document Completed',
-                message: `"${doc.document_name}" has been completed by all signers.`
-            });
+            try {
+                await createNotification({
+                    workspace_id: doc.workspace_id,
+                    user_id: doc.owner_id,
+                    document_id: doc._id,
+                    type: 'completed',
+                    title: 'Document Completed',
+                    message: `"${doc.document_name}" has been completed by all signers.`
+                });
+            } catch (notifErr) {
+                console.error('[NOTIF] Failed to create completion notification (non-fatal):', notifErr.message);
+            }
         } else if (doc.signing_order_enabled) {
-            // Sequential signing order: Notify next recipient
+            // Sequential signing order: Activate and notify the next pending signer
             const sorted = [...doc.recipients].sort((a, b) => a.signing_order - b.signing_order);
-            const nextSigner = sorted.find(r => r.status === 'sent' && r.role === 'signer');
+            const nextSigner = sorted.find(r => r.status === 'pending' && r.role === 'signer');
             if (nextSigner) {
+                // Activate this signer so they can access their link
+                nextSigner.status = 'sent';
+                await doc.save();
                 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
                 const signingLink = `${frontendUrl}/docu/public/sign/${nextSigner.secure_token}`;
                 
@@ -802,12 +1215,16 @@ router.post('/public/sign/:token/complete', async (req, res) => {
                   </div>
                 `;
 
-                await emailTransporter.sendMail({
-                    from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
-                    to: nextSigner.email,
-                    subject: `Signature Request: ${doc.document_name}`,
-                    html: emailHtml
-                });
+                try {
+                    await emailTransporter.sendMail({
+                        from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                        to: nextSigner.email,
+                        subject: `Signature Request: ${doc.document_name}`,
+                        html: emailHtml
+                    });
+                } catch (emailErr) {
+                    console.error('[EMAIL] Failed to send next-signer email (non-fatal):', emailErr.message);
+                }
             }
 
             await logAuditEvent({
@@ -925,14 +1342,96 @@ router.post('/public/verify', docuUpload.single('file'), async (req, res) => {
 
 router.get('/templates', authenticateDocuToken, async (req, res) => {
     try {
-        const list = await DocuTemplate.find({ workspace_id: req.user.workspaceId }).sort({ createdAt: -1 });
+        let list = await DocuTemplate.find({ workspace_id: req.user.workspaceId }).sort({ createdAt: -1 });
+        
+        if (list.length === 0) {
+            const hostUrl = `${req.protocol}://${req.get('host')}`;
+            const sampleFileUrl = `${hostUrl}/uploads/docu-1782063127108-BritSync_Docu_Mock_Signature_Form.pdf`;
+            
+            const defaultTemplates = [
+                {
+                    workspace_id: req.user.workspaceId,
+                    owner_id: req.user.id,
+                    template_name: 'Mutual Non-Disclosure Agreement (NDA)',
+                    description: 'Standard bi-lateral confidentiality agreement for commercial discussions and IP protection.',
+                    category: 'Legal',
+                    file_url: sampleFileUrl,
+                    fields_json: JSON.stringify([
+                        {
+                            page_number: 1,
+                            field_type: 'user_signature',
+                            label: 'Signature',
+                            required: true,
+                            x_percent: 15,
+                            y_percent: 75,
+                            width_percent: 25,
+                            height_percent: 8,
+                            assigned_recipient_id: 'signer_1'
+                        },
+                        {
+                            page_number: 1,
+                            field_type: 'date',
+                            label: 'Date',
+                            required: true,
+                            x_percent: 45,
+                            y_percent: 75,
+                            width_percent: 15,
+                            height_percent: 4,
+                            assigned_recipient_id: 'signer_1'
+                        }
+                    ]),
+                    recipients_json: JSON.stringify([
+                        {
+                            role: 'signer',
+                            name: 'Recipient Signer',
+                            email: 'signer@example.com',
+                            signing_order: 1
+                        }
+                    ]),
+                    default_message: 'Please review and execute the Mutual NDA for our upcoming collaboration.'
+                },
+                {
+                    workspace_id: req.user.workspaceId,
+                    owner_id: req.user.id,
+                    template_name: 'Consulting Services Agreement',
+                    description: 'Standard independent contractor agreement defining work scope, intellectual property assignment, and payment terms.',
+                    category: 'Agreements',
+                    file_url: sampleFileUrl,
+                    fields_json: JSON.stringify([
+                        {
+                            page_number: 1,
+                            field_type: 'user_signature',
+                            label: 'Signature',
+                            required: true,
+                            x_percent: 15,
+                            y_percent: 70,
+                            width_percent: 25,
+                            height_percent: 8,
+                            assigned_recipient_id: 'signer_1'
+                        }
+                    ]),
+                    recipients_json: JSON.stringify([
+                        {
+                            role: 'signer',
+                            name: 'Consultant',
+                            email: 'consultant@example.com',
+                            signing_order: 1
+                        }
+                    ]),
+                    default_message: 'Please execute this service agreement to commence our consulting contract.'
+                }
+            ];
+
+            await DocuTemplate.insertMany(defaultTemplates);
+            list = await DocuTemplate.find({ workspace_id: req.user.workspaceId }).sort({ createdAt: -1 });
+        }
         res.json(list);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
 
-router.post('/templates', authenticateDocuToken, async (req, res) => {
+router.post('/templates', requireCreateSendPermission, async (req, res) => {
     try {
         const { template_name, description, category, file_url, fields_json, recipients_json, default_message } = req.body;
         const temp = new DocuTemplate({
@@ -964,7 +1463,7 @@ router.get('/templates/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.patch('/templates/:id', authenticateDocuToken, async (req, res) => {
+router.patch('/templates/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const t = await DocuTemplate.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!t) return res.status(404).json({ message: 'Template not found' });
@@ -984,7 +1483,7 @@ router.patch('/templates/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.delete('/templates/:id', authenticateDocuToken, async (req, res) => {
+router.delete('/templates/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const t = await DocuTemplate.findOneAndDelete({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!t) return res.status(404).json({ message: 'Template not found' });
@@ -994,7 +1493,7 @@ router.delete('/templates/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/templates/:id/use', authenticateDocuToken, async (req, res) => {
+router.post('/templates/:id/use', requireCreateSendPermission, async (req, res) => {
     try {
         const t = await DocuTemplate.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!t) return res.status(404).json({ message: 'Template not found' });
@@ -1036,7 +1535,7 @@ router.post('/templates/:id/use', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/templates/:id/duplicate', authenticateDocuToken, async (req, res) => {
+router.post('/templates/:id/duplicate', requireCreateSendPermission, async (req, res) => {
     try {
         const t = await DocuTemplate.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!t) return res.status(404).json({ message: 'Template not found' });
@@ -1060,7 +1559,7 @@ router.post('/templates/:id/duplicate', authenticateDocuToken, async (req, res) 
     }
 });
 
-router.post('/documents/:id/save-as-template', authenticateDocuToken, async (req, res) => {
+router.post('/documents/:id/save-as-template', requireCreateSendPermission, async (req, res) => {
     try {
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
@@ -1101,7 +1600,7 @@ router.get('/contacts', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/contacts/bulk', authenticateDocuToken, async (req, res) => {
+router.post('/contacts/bulk', requireCreateSendPermission, async (req, res) => {
     try {
         const { contacts } = req.body;
         if (!Array.isArray(contacts)) return res.status(400).json({ message: 'Contacts array is required' });
@@ -1128,7 +1627,7 @@ router.post('/contacts/bulk', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/contacts', authenticateDocuToken, async (req, res) => {
+router.post('/contacts', requireCreateSendPermission, async (req, res) => {
     try {
         const { name, email, phone, company, address, notes, tags } = req.body;
         const contact = new DocuContact({
@@ -1149,7 +1648,7 @@ router.post('/contacts', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.patch('/contacts/:id', authenticateDocuToken, async (req, res) => {
+router.patch('/contacts/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const contact = await DocuContact.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!contact) return res.status(404).json({ message: 'Contact not found' });
@@ -1170,7 +1669,7 @@ router.patch('/contacts/:id', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.delete('/contacts/:id', authenticateDocuToken, async (req, res) => {
+router.delete('/contacts/:id', requireCreateSendPermission, async (req, res) => {
     try {
         const c = await DocuContact.findOneAndDelete({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!c) return res.status(404).json({ message: 'Contact not found' });
@@ -1194,14 +1693,22 @@ router.get('/team', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.post('/team/invite', authenticateDocuToken, async (req, res) => {
+router.post('/team/invite', requireAdminPermission, async (req, res) => {
     try {
         const { email, role } = req.body;
         if (!email) return res.status(400).json({ message: 'Email is required' });
 
+        const workspace = await DocuWorkspace.findById(req.user.workspaceId);
+        const workspaceName = workspace ? workspace.name : 'a Workspace';
+        
+        const inviter = await DocuUser.findById(req.user.id);
+        const inviterName = inviter ? inviter.full_name : 'A team member';
+
         // Check if user exists
+        let isNewUser = false;
         let user = await DocuUser.findOne({ email });
         if (!user) {
+            isNewUser = true;
             // Create a dummy user invite
             const dummyPassword = crypto.randomBytes(16).toString('hex');
             const password_hash = await bcrypt.hash(dummyPassword, 10);
@@ -1212,6 +1719,8 @@ router.post('/team/invite', authenticateDocuToken, async (req, res) => {
                 email_verified: false
             });
             user = await user.save();
+        } else if (!user.email_verified) {
+            isNewUser = true;
         }
 
         // Check membership
@@ -1222,10 +1731,57 @@ router.post('/team/invite', authenticateDocuToken, async (req, res) => {
             workspace_id: req.user.workspaceId,
             user_id: user._id,
             role: role || 'member',
-            status: 'invited',
+            status: isNewUser ? 'invited' : 'joined', // Auto-join if user is already registered, or keep invited
             invited_by: req.user.id
         });
         await member.save();
+
+        // Send Email
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const actionUrl = isNewUser 
+            ? `${frontendUrl}/docu/signup?email=${encodeURIComponent(email)}`
+            : `${frontendUrl}/docu/login`;
+        const buttonText = isNewUser ? 'Register & Join Workspace' : 'Log In to Workspace';
+
+        const emailHtml = `
+          <div style="font-family: 'Inter', Arial, sans-serif; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 40px 30px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+            <div style="text-align: center; margin-bottom: 2rem;">
+              <h2 style="color: #2563eb; font-size: 24px; font-weight: 800; margin: 0;">BritSync <span style="color: #0f172a;">Docu</span></h2>
+              <p style="color: #64748b; font-size: 14px; margin-top: 4px;">Secure Document Signing & Workspaces</p>
+            </div>
+            <h3 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 0;">Workspace Invitation</h3>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">Hello,</p>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">
+              <strong>${inviterName}</strong> has invited you to join the workspace <strong>"${workspaceName}"</strong> on BritSync Docu.
+            </p>
+            <p style="font-size: 15px; line-height: 1.6; color: #334155;">
+              Your assigned role is <strong>${role || 'member'}</strong>.
+            </p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${actionUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: 800; font-size: 15px; display: inline-block; box-shadow: 0 4px 12px rgba(37,99,235,0.25);">
+                ${buttonText}
+              </a>
+            </div>
+            <p style="font-size: 13px; color: #64748b; line-height: 1.5;">
+              If you have any questions, please contact the workspace administrator directly.
+            </p>
+            <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+            <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+              This is an automated security invite from BritSync Docu.
+            </p>
+          </div>
+        `;
+
+        try {
+            await emailTransporter.sendMail({
+                from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                to: email,
+                subject: `Invitation to join workspace: ${workspaceName}`,
+                html: emailHtml
+            });
+        } catch (emailErr) {
+            console.error('[EMAIL] Failed to send team invite email (non-fatal):', emailErr.message);
+        }
 
         res.status(201).json({ message: 'User invited successfully' });
     } catch (err) {
@@ -1233,7 +1789,7 @@ router.post('/team/invite', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.delete('/team/:memberId', authenticateDocuToken, async (req, res) => {
+router.delete('/team/:memberId', requireAdminPermission, async (req, res) => {
     try {
         const member = await DocuWorkspaceMember.findOne({ _id: req.params.memberId, workspace_id: req.user.workspaceId });
         if (!member) return res.status(404).json({ message: 'Team member not found' });
@@ -1246,7 +1802,7 @@ router.delete('/team/:memberId', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.patch('/team/:memberId/role', authenticateDocuToken, async (req, res) => {
+router.patch('/team/:memberId/role', requireAdminPermission, async (req, res) => {
     try {
         const { role } = req.body;
         const member = await DocuWorkspaceMember.findOne({ _id: req.params.memberId, workspace_id: req.user.workspaceId });
@@ -1274,7 +1830,7 @@ router.get('/settings', authenticateDocuToken, async (req, res) => {
     }
 });
 
-router.patch('/settings', authenticateDocuToken, async (req, res) => {
+router.patch('/settings', requireAdminPermission, async (req, res) => {
     try {
         const { name, brand_color, logo_url } = req.body;
         const ws = await DocuWorkspace.findById(req.user.workspaceId);
@@ -1355,6 +1911,35 @@ router.patch('/notifications/read-all', authenticateDocuToken, async (req, res) 
         res.json({ message: 'All notifications marked as read' });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// POST /public/cookie-consent - Log cookie consent preferences to a file
+router.post('/public/cookie-consent', async (req, res) => {
+    try {
+        const { consent, email } = req.body;
+        if (!consent) {
+            return res.status(400).json({ message: 'Consent decision is required' });
+        }
+
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'Unknown';
+        const userAgent = req.headers['user-agent'] || 'Unknown';
+        const timestamp = new Date().toISOString();
+
+        const logLine = `[${timestamp}] IP: ${ip} | User: ${email || 'Anonymous'} | Choice: ${consent} | UA: ${userAgent}\n`;
+
+        const logsDir = path.join(__dirname, '../logs');
+        if (!fs.existsSync(logsDir)) {
+            fs.mkdirSync(logsDir, { recursive: true });
+        }
+
+        const logFilePath = path.join(logsDir, 'cookie_consent_log.txt');
+        fs.appendFileSync(logFilePath, logLine);
+
+        res.json({ message: 'Consent logged successfully' });
+    } catch (err) {
+        console.error('Failed to log cookie consent:', err);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 

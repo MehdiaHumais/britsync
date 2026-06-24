@@ -6,7 +6,7 @@ const RecipientSchema = new mongoose.Schema({
     role: { type: String, enum: ['signer', 'approver', 'viewer', 'cc'], default: 'signer' },
     signing_order: { type: Number, default: 1 },
     secure_token: { type: String, default: '' },
-    status: { type: String, enum: ['sent', 'viewed', 'completed', 'declined'], default: 'sent' },
+    status: { type: String, enum: ['pending', 'sent', 'viewed', 'completed', 'declined'], default: 'pending' },
     viewed_at: { type: Date },
     signed_at: { type: Date },
     completed_at: { type: Date },

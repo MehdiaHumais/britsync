@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiCall } from '../utils/api';
-import { PenTool, Mail, Lock, RefreshCw, AlertCircle, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
+import { Mail, Lock, RefreshCw, AlertCircle, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -51,9 +51,17 @@ export const Login: React.FC = () => {
                 <div style={{ width: '100%', maxWidth: '420px', textAlign: 'left' }}>
                     {/* Logo */}
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', marginBottom: '2.5rem' }} onClick={() => navigate('/')}>
-                        <div style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', padding: '0.45rem', borderRadius: '8px', color: 'white', display: 'flex', alignItems: 'center' }}>
-                            <PenTool size={18} />
-                        </div>
+                        <img 
+                            src={`${import.meta.env.BASE_URL}logo.png`} 
+                            alt="BritSync Logo" 
+                            style={{ 
+                                width: '34px', 
+                                height: '34px', 
+                                borderRadius: '8px', 
+                                objectFit: 'cover',
+                                boxShadow: '0 4px 10px rgba(37, 99, 235, 0.15)'
+                            }} 
+                        />
                         <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.5px' }}>
                             BritSync <span style={{ color: '#2563eb' }}>Docu</span>
                         </span>

@@ -16,6 +16,14 @@ export const SendFlow: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
+    useEffect(() => {
+        const role = localStorage.getItem('docu_user_role') || 'member';
+        if (role === 'viewer') {
+            alert('Permission denied. Viewers cannot send documents.');
+            navigate('/dashboard');
+        }
+    }, [navigate]);
+
     const [_doc, setDoc] = useState<any>(null);
     const [recipients, setRecipients] = useState<Recipient[]>([]);
     const [message, setMessage] = useState('');

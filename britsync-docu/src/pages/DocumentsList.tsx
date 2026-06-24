@@ -26,8 +26,13 @@ export const DocumentsList: React.FC = () => {
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [showLogsModal, setShowLogsModal] = useState(false);
 
+    // Signing Timeline modal
+    const [timelineDoc, setTimelineDoc] = useState<any>(null);
+    const [showTimelineModal, setShowTimelineModal] = useState(false);
+
     // Toast message state
     const [toast, setToast] = useState('');
+    const [userRole, setUserRole] = useState(localStorage.getItem('docu_user_role') || 'member');
 
     const fetchDocuments = async () => {
         setLoading(true);
@@ -48,6 +53,8 @@ export const DocumentsList: React.FC = () => {
 
     useEffect(() => {
         fetchDocuments();
+        const role = localStorage.getItem('docu_user_role') || 'member';
+        setUserRole(role);
     }, []);
 
     const showToastMsg = (msg: string) => {
@@ -209,9 +216,11 @@ export const DocumentsList: React.FC = () => {
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.5px' }}>Document Manager</h2>
                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.2rem' }}>Track, audit, and organize signature contracts in your workspaces.</p>
                 </div>
-                <button className="btn btn-primary" style={{ height: '40px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', borderRadius: '8px', fontWeight: 800, boxShadow: '0 4px 12px rgba(37,99,235,0.25)' }} onClick={() => navigate('/documents/new')}>
-                    <Plus size={16} /> Upload & Prepare PDF
-                </button>
+                {userRole !== 'viewer' && (
+                    <button className="btn btn-primary" style={{ height: '40px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', borderRadius: '8px', fontWeight: 800, boxShadow: '0 4px 12px rgba(37,99,235,0.25)' }} onClick={() => navigate('/documents/new')}>
+                        <Plus size={16} /> Upload & Prepare PDF
+                    </button>
+                )}
             </div>
 
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
@@ -309,7 +318,7 @@ export const DocumentsList: React.FC = () => {
                     </div>
 
                     {/* Bulk Action Bar */}
-                    {selectedIds.length > 0 && (
+                    {userRole !== 'viewer' && selectedIds.length > 0 && (
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '0.85rem 1.25rem', fontSize: '0.8rem', color: '#1e40af', fontWeight: 800 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <Check size={16} strokeWidth={3} />
@@ -352,14 +361,16 @@ export const DocumentsList: React.FC = () => {
                             <table className="docu-table" style={{ fontSize: '0.8rem' }}>
                                 <thead>
                                     <tr>
-                                        <th style={{ width: '45px', padding: '0.75rem 0.5rem', textAlign: 'center' }}>
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedIds.length === sortedDocs.length && sortedDocs.length > 0} 
-                                                onChange={() => handleSelectAll(sortedDocs)}
-                                                style={{ cursor: 'pointer', width: '15px', height: '15px' }}
-                                            />
-                                        </th>
+                                        {userRole !== 'viewer' && (
+                                            <th style={{ width: '45px', padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedIds.length === sortedDocs.length && sortedDocs.length > 0} 
+                                                    onChange={() => handleSelectAll(sortedDocs)}
+                                                    style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                />
+                                            </th>
+                                        )}
                                         <th>Document Name</th>
                                         <th>Signers</th>
                                         <th>Status</th>
@@ -373,14 +384,16 @@ export const DocumentsList: React.FC = () => {
                                         const isSelected = selectedIds.includes(doc._id);
                                         return (
                                             <tr key={doc._id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isSelected ? '#f8fafc' : 'white' }}>
-                                                <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={isSelected} 
-                                                        onChange={() => handleToggleSelect(doc._id)}
-                                                        style={{ cursor: 'pointer', width: '15px', height: '15px' }}
-                                                    />
-                                                </td>
+                                                {userRole !== 'viewer' && (
+                                                    <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={isSelected} 
+                                                            onChange={() => handleToggleSelect(doc._id)}
+                                                            style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                                                        />
+                                                    </td>
+                                                )}
                                                 <td style={{ fontWeight: 800, color: '#0f172a' }}>{doc.document_name}</td>
                                                 <td>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -399,7 +412,7 @@ export const DocumentsList: React.FC = () => {
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <div style={{ display: 'inline-flex', gap: '0.25rem' }}>
-                                                        {doc.status === 'completed' && doc.final_file_url ? (
+                                                        {doc.status === 'completed' && doc.final_file_url && (
                                                             <>
                                                                 <a href={doc.final_file_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} title="Download Signed PDF">
                                                                     <Download size={13} />
@@ -410,41 +423,55 @@ export const DocumentsList: React.FC = () => {
                                                                     </a>
                                                                 )}
                                                             </>
-                                                        ) : (
+                                                        )}
+                                                        
+                                                        {userRole !== 'viewer' && doc.status !== 'completed' && (
                                                             <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => navigate(`/documents/${doc._id}/editor`)} title="Open Editor">
                                                                 <Eye size={13} />
                                                             </button>
                                                         )}
                                                         
-                                                        {activeSigner && (
+                                                        {userRole !== 'viewer' && activeSigner && (
                                                             <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#2563eb' }} onClick={() => handleCopyLink(activeSigner.secure_token)} title="Copy Link">
                                                                 <Copy size={13} />
                                                             </button>
                                                         )}
                                                         
-                                                        {doc.status !== 'completed' && doc.status !== 'draft' && (
+                                                        {userRole !== 'viewer' && doc.status !== 'completed' && doc.status !== 'draft' && (
                                                             <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#f59e0b' }} onClick={() => handleResend(doc._id)} title="Send Reminder">
                                                                 <Send size={13} />
                                                             </button>
                                                         )}
 
-                                                        <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDuplicate(doc._id)} title="Duplicate">
-                                                            <Layers size={13} />
-                                                        </button>
+                                                        {userRole !== 'viewer' && (
+                                                            <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDuplicate(doc._id)} title="Duplicate">
+                                                                <Layers size={13} />
+                                                            </button>
+                                                        )}
 
-                                                        <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => viewAuditLogs(doc)} title="History logs">
-                                                            <History size={13} />
-                                                        </button>
+                                                        {userRole !== 'viewer' && (
+                                                            <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => viewAuditLogs(doc)} title="History logs">
+                                                                <History size={13} />
+                                                            </button>
+                                                        )}
 
-                                                        {doc.status !== 'archived' && (
+                                                        {doc.recipients?.length > 0 && (
+                                                            <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#7c3aed' }} onClick={() => { setTimelineDoc(doc); setShowTimelineModal(true); }} title="Signing Timeline">
+                                                                <Calendar size={13} />
+                                                            </button>
+                                                        )}
+
+                                                        {userRole !== 'viewer' && doc.status !== 'archived' && (
                                                             <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleArchive(doc._id)} title="Archive">
                                                                 <Lock size={13} />
                                                             </button>
                                                         )}
 
-                                                        <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDelete(doc._id)} title="Delete">
-                                                            <Trash2 size={13} />
-                                                        </button>
+                                                        {userRole !== 'viewer' && (
+                                                            <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDelete(doc._id)} title="Delete">
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -476,14 +503,16 @@ export const DocumentsList: React.FC = () => {
                                             transition: 'all 0.15s ease'
                                         }}
                                     >
-                                        <input 
-                                            type="checkbox" 
-                                            checked={isSelected}
-                                            onChange={() => handleToggleSelect(doc._id)}
-                                            style={{ position: 'absolute', top: '16px', left: '16px', cursor: 'pointer', width: '16px', height: '16px', zIndex: 5 }}
-                                        />
+                                        {userRole !== 'viewer' && (
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isSelected}
+                                                onChange={() => handleToggleSelect(doc._id)}
+                                                style={{ position: 'absolute', top: '16px', left: '16px', cursor: 'pointer', width: '16px', height: '16px', zIndex: 5 }}
+                                            />
+                                        )}
 
-                                        <div style={{ paddingLeft: '1.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        <div style={{ paddingLeft: userRole !== 'viewer' ? '1.75rem' : '0rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
                                                 <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', margin: 0, wordBreak: 'break-all', lineHeight: 1.3 }}>{doc.document_name}</h4>
                                                 <span className={`badge badge-${doc.status}`} style={{ fontSize: '0.55rem', textTransform: 'uppercase', flexShrink: 0 }}>{doc.status}</span>
@@ -502,7 +531,7 @@ export const DocumentsList: React.FC = () => {
                                         </div>
 
                                         <div style={{ display: 'flex', gap: '0.25rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', marginTop: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                            {doc.status === 'completed' && doc.final_file_url ? (
+                                            {doc.status === 'completed' && doc.final_file_url && (
                                                 <>
                                                     <a href={doc.final_file_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} title="Download Signed PDF">
                                                         <Download size={13} />
@@ -513,31 +542,43 @@ export const DocumentsList: React.FC = () => {
                                                         </a>
                                                     )}
                                                 </>
-                                            ) : (
+                                            )}
+                                            
+                                            {userRole !== 'viewer' && doc.status !== 'completed' && (
                                                 <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => navigate(`/documents/${doc._id}/editor`)} title="Open Editor">
                                                     <Eye size={13} />
                                                 </button>
                                             )}
 
-                                            {activeSigner && (
+                                            {userRole !== 'viewer' && activeSigner && (
                                                 <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#2563eb' }} onClick={() => handleCopyLink(activeSigner.secure_token)} title="Copy Link">
                                                     <Copy size={13} />
                                                 </button>
                                             )}
 
-                                            {doc.status !== 'completed' && doc.status !== 'draft' && (
+                                            {userRole !== 'viewer' && doc.status !== 'completed' && doc.status !== 'draft' && (
                                                 <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#f59e0b' }} onClick={() => handleResend(doc._id)} title="Send Reminder">
                                                     <Send size={13} />
                                                 </button>
                                             )}
 
-                                            <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => viewAuditLogs(doc)} title="History">
-                                                <History size={13} />
-                                            </button>
+                                            {userRole !== 'viewer' && (
+                                                <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => viewAuditLogs(doc)} title="History">
+                                                    <History size={13} />
+                                                </button>
+                                            )}
+
+                                            {doc.recipients?.length > 0 && (
+                                                <button className="btn btn-secondary" style={{ padding: '0.4rem', borderRadius: '6px', color: '#7c3aed' }} onClick={() => { setTimelineDoc(doc); setShowTimelineModal(true); }} title="Signing Timeline">
+                                                    <Calendar size={13} />
+                                                </button>
+                                            )}
                                             
-                                            <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDelete(doc._id)} title="Delete">
-                                                <Trash2 size={13} />
-                                            </button>
+                                            {userRole !== 'viewer' && (
+                                                <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleDelete(doc._id)} title="Delete">
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -584,6 +625,114 @@ export const DocumentsList: React.FC = () => {
                         </div>
                         <div className="modal-footer" style={{ background: '#f8fafc' }}>
                             <button className="btn btn-secondary" style={{ borderRadius: '6px' }} onClick={() => setShowLogsModal(false)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Signing Timeline Modal */}
+            {showTimelineModal && timelineDoc && (
+                <div className="modal-overlay">
+                    <div className="modal-container" style={{ maxWidth: '580px', borderRadius: '16px' }}>
+                        <div className="modal-header">
+                            <div>
+                                <h2 style={{ fontSize: '1.1rem', fontWeight: 900 }}>Signing Timeline</h2>
+                                <span style={{ color: '#64748b', fontSize: '0.75rem', display: 'block', marginTop: '4px' }}>{timelineDoc.document_name}</span>
+                            </div>
+                            <button className="close-btn" onClick={() => setShowTimelineModal(false)}>
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="modal-body" style={{ padding: '1.5rem' }}>
+                            {/* Document metadata */}
+                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+                                <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+                                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>Sent On</div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{timelineDoc.sent_at ? new Date(timelineDoc.sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</div>
+                                </div>
+                                <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+                                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>Signing Mode</div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f172a' }}>{timelineDoc.signing_order_enabled ? '🔢 Sequential' : '🔀 Parallel'}</div>
+                                </div>
+                                <div style={{ flex: 1, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.75rem 1rem' }}>
+                                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>Expires</div>
+                                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: timelineDoc.expires_at && new Date(timelineDoc.expires_at) < new Date() ? '#ef4444' : '#0f172a' }}>
+                                        {timelineDoc.expires_at ? new Date(timelineDoc.expires_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Signing Progress Bar */}
+                            {(() => {
+                                const signers = timelineDoc.recipients?.filter((r: any) => r.role === 'signer') || [];
+                                const completed = signers.filter((r: any) => r.status === 'completed').length;
+                                const pct = signers.length > 0 ? Math.round((completed / signers.length) * 100) : 0;
+                                return (
+                                    <div style={{ marginBottom: '1.5rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Signing Progress</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#2563eb' }}>{completed} / {signers.length} signed</span>
+                                        </div>
+                                        <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '99px', overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#10b981' : '#2563eb', borderRadius: '99px', transition: 'width 0.3s ease' }} />
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Recipient Timeline */}
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Recipients</div>
+                            <div style={{ position: 'relative' }}>
+                                {[...(timelineDoc.recipients || [])]
+                                    .sort((a: any, b: any) => a.signing_order - b.signing_order)
+                                    .map((r: any, idx: number, arr: any[]) => {
+                                        const statusColor = r.status === 'completed' ? '#10b981' : r.status === 'sent' || r.status === 'viewed' ? '#2563eb' : r.status === 'declined' ? '#ef4444' : '#94a3b8';
+                                        const statusBg = r.status === 'completed' ? '#dcfce7' : r.status === 'sent' || r.status === 'viewed' ? '#dbeafe' : r.status === 'declined' ? '#fee2e2' : '#f1f5f9';
+                                        const statusLabel = r.status === 'completed' ? '✓ Signed' : r.status === 'viewed' ? '👁 Viewing' : r.status === 'sent' ? '📧 Email Sent' : r.status === 'declined' ? '✗ Declined' : '⏳ Waiting';
+                                        return (
+                                            <div key={idx} style={{ display: 'flex', gap: '1rem', paddingBottom: idx < arr.length - 1 ? '1.5rem' : 0, position: 'relative' }}>
+                                                {/* Timeline line */}
+                                                {idx < arr.length - 1 && (
+                                                    <div style={{ position: 'absolute', left: '15px', top: '32px', width: '2px', height: 'calc(100% - 8px)', background: r.status === 'completed' ? '#d1fae5' : '#e2e8f0' }} />
+                                                )}
+                                                {/* Circle */}
+                                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: statusBg, border: `2px solid ${statusColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: '0.7rem', fontWeight: 800, color: statusColor, zIndex: 1 }}>
+                                                    {r.role === 'cc' ? 'CC' : r.signing_order}
+                                                </div>
+                                                {/* Content */}
+                                                <div style={{ flex: 1, paddingTop: '4px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '0.85rem' }}>{r.name}</div>
+                                                            <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{r.email}</div>
+                                                        </div>
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 800, background: statusBg, color: statusColor, padding: '2px 8px', borderRadius: '99px', whiteSpace: 'nowrap' }}>
+                                                            {statusLabel}
+                                                        </span>
+                                                    </div>
+                                                    {/* Timestamps */}
+                                                    <div style={{ marginTop: '6px', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                        {r.viewed_at && (
+                                                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>👁 Viewed: <strong>{new Date(r.viewed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong></span>
+                                                        )}
+                                                        {r.completed_at && (
+                                                            <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✓ Signed: <strong>{new Date(r.completed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong></span>
+                                                        )}
+                                                        {!r.viewed_at && !r.completed_at && r.status === 'sent' && (
+                                                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>📧 Awaiting action...</span>
+                                                        )}
+                                                        {r.status === 'pending' && (
+                                                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Will be notified after previous signer</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                        <div className="modal-footer" style={{ background: '#f8fafc' }}>
+                            <button className="btn btn-secondary" style={{ borderRadius: '6px' }} onClick={() => setShowTimelineModal(false)}>Close</button>
                         </div>
                     </div>
                 </div>

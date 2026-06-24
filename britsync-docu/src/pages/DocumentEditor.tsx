@@ -51,6 +51,14 @@ export const DocumentEditor: React.FC = () => {
     const { id } = useParams();
     const navigate = useNavigate();
 
+    useEffect(() => {
+        const role = localStorage.getItem('docu_user_role') || 'member';
+        if (role === 'viewer') {
+            alert('Permission denied. Viewers cannot edit documents.');
+            navigate('/dashboard');
+        }
+    }, [navigate]);
+
     // Editor state
     const [doc, setDoc] = useState<any>(null);
     const [fields, setFields] = useState<PlacedField[]>([]);

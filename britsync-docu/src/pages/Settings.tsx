@@ -10,6 +10,8 @@ export const Settings: React.FC = () => {
     const [logoUrl, setLogoUrl] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [userRole, setUserRole] = useState(localStorage.getItem('docu_user_role') || 'member');
+    const canSave = userRole === 'admin' || userRole === 'owner';
 
     useEffect(() => {
         const fetchSettings = async () => {
@@ -19,6 +21,8 @@ export const Settings: React.FC = () => {
                 setName(data.name || '');
                 setBrandColor(data.brand_color || '#2563eb');
                 setLogoUrl(data.logo_url || '');
+                const role = localStorage.getItem('docu_user_role') || 'member';
+                setUserRole(role);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -58,6 +62,23 @@ export const Settings: React.FC = () => {
     return (
         <DashboardLayout title="Workspace Settings">
             <div style={{ maxWidth: '600px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '2rem', boxShadow: 'var(--shadow-sm)' }}>
+                {!canSave && (
+                    <div style={{
+                        background: '#fffbe6',
+                        border: '1px solid #ffe58f',
+                        borderRadius: '8px',
+                        padding: '1rem',
+                        color: '#d46b08',
+                        fontSize: '0.85rem',
+                        marginBottom: '1.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontWeight: 600
+                    }}>
+                        <span>⚠️ Read-Only Workspace. Only admins/owners can modify settings.</span>
+                    </div>
+                )}
                 <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1.5rem' }}>General Settings</h3>
                 
                 <form onSubmit={handleSave}>
@@ -69,6 +90,7 @@ export const Settings: React.FC = () => {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             required
+                            disabled={!canSave}
                         />
                     </div>
 
@@ -87,6 +109,7 @@ export const Settings: React.FC = () => {
                                     height: '44px',
                                     cursor: 'pointer'
                                 }}
+                                disabled={!canSave}
                             />
                             <input
                                 type="text"
@@ -94,6 +117,7 @@ export const Settings: React.FC = () => {
                                 value={brandColor}
                                 onChange={(e) => setBrandColor(e.target.value)}
                                 style={{ width: '120px' }}
+                                disabled={!canSave}
                             />
                         </div>
                     </div>
@@ -106,20 +130,23 @@ export const Settings: React.FC = () => {
                             value={logoUrl}
                             onChange={(e) => setLogoUrl(e.target.value)}
                             placeholder="https://example.com/logo.png"
+                            disabled={!canSave}
                         />
                     </div>
 
-                    <button type="submit" className="btn btn-primary" disabled={saving}>
-                        {saving ? (
-                            <>
-                                <RefreshCw className="spinner" size={16} style={{ marginRight: '0.5rem' }} /> Saving...
-                            </>
-                        ) : (
-                            <>
-                                <Save size={16} /> Save Settings
-                            </>
-                        )}
-                    </button>
+                    {canSave && (
+                        <button type="submit" className="btn btn-primary" disabled={saving}>
+                            {saving ? (
+                                <>
+                                    <RefreshCw className="spinner" size={16} style={{ marginRight: '0.5rem' }} /> Saving...
+                                </>
+                            ) : (
+                                <>
+                                    <Save size={16} /> Save Settings
+                                </>
+                            )}
+                        </button>
+                    )}
                 </form>
             </div>
         </DashboardLayout>

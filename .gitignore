@@ -11,6 +11,9 @@ node_modules/
 .env
 .env.local
 .env.*.local
+service-account.json
+*-service-account.json
+*.credentials.json
 
 # =====================
 # Build outputs
@@ -45,8 +48,11 @@ tmp/
 scratch/
 
 # =====================
-# Large assets
+# Large assets / Temp Uploads
 # =====================
 *.zip
 ui.zip
 vite.svg
+britsync-server/uploads/*.pdf
+britsync-server/uploads/*.docx
+britsync-server/scratch_test_pdf_pages.js

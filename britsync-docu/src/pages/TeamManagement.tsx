@@ -7,6 +7,8 @@ import { Select } from '../components/ui/Select';
 export const TeamManagement: React.FC = () => {
     const [members, setMembers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [userRole, setUserRole] = useState(localStorage.getItem('docu_user_role') || 'member');
+    const canManageTeam = userRole === 'admin' || userRole === 'owner';
 
     // Invite Modal
     const [showInviteModal, setShowInviteModal] = useState(false);
@@ -18,6 +20,8 @@ export const TeamManagement: React.FC = () => {
         try {
             const list = await apiCall('team');
             setMembers(list);
+            const role = localStorage.getItem('docu_user_role') || 'member';
+            setUserRole(role);
         } catch (err) {
             console.error(err);
         } finally {
@@ -79,9 +83,11 @@ export const TeamManagement: React.FC = () => {
                 <div>
                     <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Workspace Members</h2>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowInviteModal(true)}>
-                    <Plus size={16} /> Invite Member
-                </button>
+                {canManageTeam && (
+                    <button className="btn btn-primary" onClick={() => setShowInviteModal(true)}>
+                        <Plus size={16} /> Invite Member
+                    </button>
+                )}
             </div>
 
             <div className="card-table-wrapper" style={{ margin: 0 }}>
@@ -113,6 +119,8 @@ export const TeamManagement: React.FC = () => {
                                     <td>
                                         {member.role === 'owner' ? (
                                             <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#64748b' }}>Owner</span>
+                                        ) : !canManageTeam ? (
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', textTransform: 'capitalize' }}>{member.role}</span>
                                         ) : (
                                             <div style={{ width: '120px' }}>
                                                 <Select
@@ -133,7 +141,7 @@ export const TeamManagement: React.FC = () => {
                                         </span>
                                     </td>
                                     <td style={{ textAlign: 'right' }}>
-                                        {member.role !== 'owner' && (
+                                        {canManageTeam && member.role !== 'owner' && (
                                             <button className="btn btn-danger" style={{ padding: '0.4rem', borderRadius: '6px' }} onClick={() => handleRemoveMember(member._id)} title="Remove Team Member">
                                                 <Trash2 size={14} />
                                             </button>

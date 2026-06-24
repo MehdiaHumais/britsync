@@ -48,7 +48,7 @@ export const PublicSigning: React.FC = () => {
 
     const [loading, setLoading] = useState(true);
     const [pdfLoading, setPdfLoading] = useState(true);
-    const [state, setState] = useState<'signing' | 'completed' | 'expired' | 'declined' | 'error'>('signing');
+    const [state, setState] = useState<'signing' | 'completed' | 'expired' | 'declined' | 'not_your_turn' | 'error'>('signing');
     const [errorMsg, setErrorMsg] = useState('');
 
     const [doc, setDoc] = useState<any>(null);
@@ -91,6 +91,14 @@ export const PublicSigning: React.FC = () => {
                 
                 if (data.state === 'expired') {
                     setState('expired');
+                    setLoading(false);
+                    return;
+                }
+
+                if (data.state === 'not_your_turn') {
+                    setDoc(data.doc);
+                    setRecipient(data.recipient);
+                    setState('not_your_turn');
                     setLoading(false);
                     return;
                 }
@@ -325,6 +333,54 @@ export const PublicSigning: React.FC = () => {
         );
     }
 
+
+    if (state === 'not_your_turn' && doc) {
+        // Find who is currently active
+        const sortedRecipients = [...(doc.recipients || [])]
+            .filter((r: any) => r.role === 'signer')
+            .sort((a: any, b: any) => a.signing_order - b.signing_order);
+        const activeSigner = sortedRecipients.find((r: any) => r.status === 'sent' || r.status === 'viewed');
+        return (
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '2rem' }}>
+                <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '3rem 2.5rem', maxWidth: '500px', width: '100%', textAlign: 'center', boxShadow: 'var(--shadow-lg)' }}>
+                    <div style={{ background: '#fffbeb', color: '#d97706', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', fontSize: '2rem' }}>
+                        ⏳
+                    </div>
+                    <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.75rem' }}>Not Your Turn Yet</h1>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+                        This document uses <strong>Sequential Signing</strong>. It's not your turn to sign yet.
+                        {activeSigner && <> <strong>{activeSigner.name}</strong> must sign first.</>}
+                        {' '}You'll receive an email notification as soon as it's your turn.
+                    </p>
+                    {sortedRecipients.length > 0 && (
+                        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '1.25rem', textAlign: 'left' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Signing Order</div>
+                            {sortedRecipients.map((r: any, idx: number) => (
+                                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0', borderBottom: idx < sortedRecipients.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                    <div style={{
+                                        width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 800,
+                                        background: r.status === 'completed' ? '#dcfce7' : r.status === 'sent' || r.status === 'viewed' ? '#eff6ff' : '#f1f5f9',
+                                        color: r.status === 'completed' ? '#16a34a' : r.status === 'sent' || r.status === 'viewed' ? '#2563eb' : '#94a3b8'
+                                    }}>{idx + 1}</div>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>{r.name}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{r.email}</div>
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '99px',
+                                        background: r.status === 'completed' ? '#dcfce7' : r.status === 'sent' || r.status === 'viewed' ? '#dbeafe' : '#f1f5f9',
+                                        color: r.status === 'completed' ? '#16a34a' : r.status === 'sent' || r.status === 'viewed' ? '#2563eb' : '#94a3b8'
+                                    }}>
+                                        {r.status === 'completed' ? '✓ Signed' : r.status === 'sent' || r.status === 'viewed' ? '● Active' : '○ Waiting'}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     if (state === 'declined') {
         return (
             <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc', padding: '2rem' }}>
@@ -390,9 +446,17 @@ export const PublicSigning: React.FC = () => {
                     {logoUrl ? (
                         <img src={logoUrl} alt="Logo" style={{ height: '28px', maxWidth: '120px', objectFit: 'contain' }} />
                     ) : (
-                        <div style={{ background: brandColor, padding: '0.4rem', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center' }}>
-                            <PenTool size={16} />
-                        </div>
+                        <img 
+                            src={`${import.meta.env.BASE_URL}logo.png`} 
+                            alt="Logo" 
+                            style={{ 
+                                height: '28px', 
+                                width: '28px', 
+                                borderRadius: '6px', 
+                                objectFit: 'cover',
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                            }} 
+                        />
                     )}
                     <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
                         {companyName} <span style={{ color: brandColor }}>Docu</span>
@@ -702,7 +766,10 @@ const SigningPageContainer: React.FC<SigningPageProps> = ({
             <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} style={{ display: 'block', width: '100%', height: '100%' }} />
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                 {pageFields.map(field => {
-                    const isMyField = field.assigned_recipient_id === recipient?._id || field.assigned_recipient_id === recipient?.email;
+                    const isMyField = 
+                        field.assigned_recipient_id === String(recipient?._id) ||
+                        field.assigned_recipient_id === recipient?.email ||
+                        field.assigned_recipient_id === 'all';
                     const isError = validationErrors.includes(field._id);
                     
                     let isEmpty = false;

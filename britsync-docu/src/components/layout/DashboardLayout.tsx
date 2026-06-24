@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { apiCall } from '../../utils/api';
-import { PenTool, LayoutDashboard, FileText, Layers, Users, Contact, Settings, LogOut, Bell, Menu, X, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, FileText, Layers, Users, Contact, Settings, LogOut, Bell, Menu, X, BarChart2 } from 'lucide-react';
 
 interface DashboardLayoutProps {
     children: React.ReactNode;
@@ -30,6 +30,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                 const data = await apiCall('auth/me');
                 setUser(data.user);
                 setWorkspace(data.workspace);
+                localStorage.setItem('docu_user_role', data.role || 'member');
                 setLoading(false);
                 // Fetch notifications
                 const notifs = await apiCall('notifications');
@@ -82,12 +83,20 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
         <div className="app-container">
             {/* Sidebar */}
             <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''}`}>
-                <div className="sidebar-logo">
-                    <div style={{ background: '#2563eb', padding: '0.4rem', borderRadius: '6px', color: 'white', display: 'flex', alignItems: 'center' }}>
-                        <PenTool size={18} />
-                    </div>
-                    <span className="logo-text">
-                        BritSync <span className="logo-span">Docu</span>
+                <div className="sidebar-logo" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
+                    <img 
+                        src={`${import.meta.env.BASE_URL}logo.png`} 
+                        alt="BritSync Logo" 
+                        style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '8px',
+                            objectFit: 'cover',
+                            boxShadow: '0 4px 10px rgba(37, 99, 235, 0.15)'
+                        }} 
+                    />
+                    <span className="logo-text" style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--foreground)', letterSpacing: '-0.5px' }}>
+                        BritSync <span className="logo-span" style={{ color: 'var(--primary)' }}>Docu</span>
                     </span>
                 </div>
                 

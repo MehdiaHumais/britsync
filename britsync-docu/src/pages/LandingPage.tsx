@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     PenTool, FileText, CheckCircle2, ArrowRight, Layers, Users, Zap, 
-    ShieldCheck, Play, Check, Sparkles, Shield, Cpu, RefreshCw, Lock,
+    ShieldCheck, Play, Check, Shield, Cpu, RefreshCw, Lock,
     Grid as GridIcon, Compass, Sparkle
 } from 'lucide-react';
 import AnimatedSignatureHero from '../components/ui/AnimatedSignatureHero';
@@ -62,9 +62,17 @@ export const LandingPage: React.FC = () => {
                 boxShadow: '0 4px 30px rgba(0, 0, 0, 0.02)'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => navigate('/docu')}>
-                    <div style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', padding: '0.5rem', borderRadius: '10px', color: 'white', display: 'flex', alignItems: 'center', boxShadow: '0 4px 10px rgba(37, 99, 235, 0.2)' }}>
-                        <PenTool size={20} />
-                    </div>
+                    <img 
+                        src={`${import.meta.env.BASE_URL}logo.png`}
+                        alt="BritSync Logo" 
+                        style={{ 
+                            width: '38px', 
+                            height: '38px', 
+                            borderRadius: '10px', 
+                            objectFit: 'cover',
+                            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)'
+                        }} 
+                    />
                     <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.6px' }}>
                         BritSync <span style={{ color: '#2563eb' }}>Docu</span>
                     </span>
@@ -111,22 +119,7 @@ export const LandingPage: React.FC = () => {
 
                 {/* Hero Text */}
                 <div style={{ flex: 1.2, minWidth: '320px', textAlign: 'left' }}>
-                    <div style={{ 
-                        display: 'inline-flex', 
-                        alignItems: 'center', 
-                        gap: '0.5rem', 
-                        background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', 
-                        color: '#1e40af', 
-                        padding: '0.45rem 1.15rem', 
-                        borderRadius: '9999px',
-                        fontSize: '0.75rem',
-                        fontWeight: 800,
-                        marginBottom: '1.75rem',
-                        border: '1px solid #bfdbfe',
-                        boxShadow: '0 2px 5px rgba(37,99,235,0.05)'
-                    }}>
-                        <Sparkles size={13} style={{ color: '#2563eb' }} /> Premium e-Signature SaaS v2.0
-                    </div>
+                    {/* Badge removed */}
                     <h1 style={{ fontSize: '3.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-1.8px', lineHeight: 1.1, marginBottom: '1.5rem' }}>
                         Send, sign, and manage documents <span style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>digitally in minutes.</span>
                     </h1>

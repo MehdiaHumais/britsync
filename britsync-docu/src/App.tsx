@@ -15,6 +15,7 @@ import Reports from './pages/Reports';
 import TeamManagement from './pages/TeamManagement';
 import Settings from './pages/Settings';
 import AuditVerification from './pages/AuditVerification';
+import { CookieConsent } from './components/ui/CookieConsent';
 
 export const App: React.FC = () => {
     return (
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
                 {/* Catch-all fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            <CookieConsent />
         </BrowserRouter>
     );
 };

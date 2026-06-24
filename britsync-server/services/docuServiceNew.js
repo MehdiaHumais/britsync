@@ -26,6 +26,17 @@ const calculateHash = (buffer) => {
     return crypto.createHash('sha256').update(buffer).digest('hex');
 };
 
+const sanitizeTextForPdf = (str) => {
+    if (!str) return '';
+    return String(str)
+        .replace(/[\u201c\u201d]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u2014\u2013]/g, '-')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/[^\x20-\x7E]/g, '');
+};
+
 /**
  * Compiles original PDF, overlays all texts and signatures, and generates the final flat PDF
  * @param {Object} document Document record from database
@@ -69,7 +80,7 @@ const compileFinalPdfNew = async (document) => {
                 const fontSize = field.font_size || Math.max(6, Math.min(11, pdfHeight * 0.5));
                 const textY = pdfY + (pdfHeight - fontSize) / 2;
 
-                page.drawText(textValue, {
+                page.drawText(sanitizeTextForPdf(textValue), {
                     x: pdfX + 5,
                     y: textY,
                     size: fontSize,
@@ -192,10 +203,10 @@ const generateAuditReportPdf = async (document, auditLogs) => {
         });
 
         const lines = [
-            `Document ID: ${document._id}`,
-            `Document Name: ${document.document_name}`,
-            `Original File Hash: ${document.original_hash || 'N/A'}`,
-            `Completed File Hash: ${document.final_hash || 'N/A'}`,
+            `Document ID: ${sanitizeTextForPdf(document._id)}`,
+            `Document Name: ${sanitizeTextForPdf(document.document_name)}`,
+            `Original File Hash: ${sanitizeTextForPdf(document.original_hash || 'N/A')}`,
+            `Completed File Hash: ${sanitizeTextForPdf(document.final_hash || 'N/A')}`,
             `Status: Completed / Securely Signed`,
             `Completion Timestamp: ${new Date().toLocaleString('en-GB')}`
         ];
@@ -225,7 +236,7 @@ const generateAuditReportPdf = async (document, auditLogs) => {
         currY -= 20;
 
         document.recipients.forEach(r => {
-            page.drawText(`Name: ${r.name} (${r.email})`, {
+            page.drawText(`Name: ${sanitizeTextForPdf(r.name)} (${sanitizeTextForPdf(r.email)})`, {
                 x: 45,
                 y: currY,
                 size: 9,
@@ -234,7 +245,7 @@ const generateAuditReportPdf = async (document, auditLogs) => {
             });
             currY -= 12;
 
-            page.drawText(`Role: ${r.role} | Status: ${r.status}`, {
+            page.drawText(`Role: ${sanitizeTextForPdf(r.role)} | Status: ${sanitizeTextForPdf(r.status)}`, {
                 x: 45,
                 y: currY,
                 size: 9,
@@ -281,7 +292,7 @@ const generateAuditReportPdf = async (document, auditLogs) => {
         const recentLogs = auditLogs.slice(0, 10);
         recentLogs.forEach(log => {
             const eventTime = new Date(log.createdAt).toLocaleString('en-GB');
-            const details = `${eventTime} - ${log.event_type} (IP: ${log.ip_address || 'N/A'})`;
+            const details = `${eventTime} - ${sanitizeTextForPdf(log.event_type)} (IP: ${sanitizeTextForPdf(log.ip_address || 'N/A')})`;
             page.drawText(details, {
                 x: 45,
                 y: currY,
