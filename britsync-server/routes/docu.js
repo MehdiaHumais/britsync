@@ -2242,6 +2242,36 @@ router.patch('/settings', requireAdminPermission, async (req, res) => {
     }
 });
 
+const logoUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
+        filename: (req, file, cb) => {
+            const sanitized = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+            cb(null, 'logo-' + Date.now() + '-' + sanitized);
+        }
+    }),
+    fileFilter: (req, file, cb) => {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (allowed.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only JPEG, PNG, and WEBP images are allowed.'), false);
+        }
+    },
+    limits: { fileSize: 2 * 1024 * 1024 } // 2MB limit
+});
+
+router.post('/settings/logo', requireAdminPermission, logoUpload.single('logo'), async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No logo file uploaded' });
+    try {
+        const logoUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const ws = await DocuWorkspace.findByIdAndUpdate(req.user.workspaceId, { logo_url: logoUrl }, { new: true });
+        res.json({ message: 'Logo uploaded successfully', logo_url: logoUrl, workspace: ws });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // ==========================================
 // 11. AUDIT LOGS
 // ==========================================
@@ -2704,7 +2734,7 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
                 }
             }
 
-            const unitAmount = plan === 'business' ? 9900 : 2900;
+            const unitAmount = plan === 'business' ? 100 : 50; // 1 INR vs 0.50 INR (50 paise is Stripe minimum for INR)
             const planDesc = plan === 'business' 
                 ? 'Up to 50 team members, 500 documents per month, bulk send & signer auth.' 
                 : 'Up to 5 team members, 50 documents per month, templates & custom branding.';
@@ -2713,7 +2743,7 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
                 payment_method_types: ['card'],
                 line_items: [{
                     price_data: {
-                        currency: 'usd',
+                        currency: 'inr',
                         product_data: {
                             name: `BritSync Docu ${plan === 'business' ? 'Business' : 'Pro'} Company Plan`,
                             description: planDesc
@@ -2724,6 +2754,7 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
                     quantity: 1
                 }],
                 mode: 'subscription',
+                billing_address_collection: 'required',
                 success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/onboarding?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
                 cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/onboarding?canceled=true`,
                 customer_email: req.user.email,
@@ -2780,22 +2811,23 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
             }
         }
 
-        const unitAmount = plan === 'business' ? 9900 : 2900;
+        const unitAmount = plan === 'business' ? 100 : 50; // 1 INR vs 0.50 INR
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: [{
                 price_data: {
-                    currency: 'usd',
+                    currency: 'inr',
                     product_data: {
                         name: `BritSync Docu ${plan === 'business' ? 'Business' : 'Pro'} Plan`,
                         description: `Upgrade your workspace to ${plan}`
                     },
                     unit_amount: unitAmount,
                     recurring: { interval: 'month' }
-                },
+                    },
                 quantity: 1
             }],
             mode: 'subscription',
+            billing_address_collection: 'required',
             success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/billing?success=true`,
             cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/billing?canceled=true`,
             client_reference_id: wsId.toString(),

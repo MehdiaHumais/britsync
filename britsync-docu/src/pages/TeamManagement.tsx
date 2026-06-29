@@ -6,6 +6,8 @@ import { Select } from '../components/ui/Select';
 
 export const TeamManagement: React.FC = () => {
     const [members, setMembers] = useState<any[]>([]);
+    const [joinRequests, setJoinRequests] = useState<any[]>([]);
+    const [activeWorkspace, setActiveWorkspace] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState(localStorage.getItem('docu_user_role') || 'member');
     const canManageTeam = userRole === 'admin' || userRole === 'owner';
@@ -16,16 +18,46 @@ export const TeamManagement: React.FC = () => {
     const [inviteRole, setInviteRole] = useState('member');
     const [inviting, setInviting] = useState(false);
 
+    const fetchJoinRequests = async (workspaceId: string) => {
+        try {
+            const list = await apiCall(`workspaces/${workspaceId}/admin/join-requests`);
+            setJoinRequests(list || []);
+        } catch (err) {
+            console.error('Failed to fetch join requests:', err);
+        }
+    };
+
     const fetchTeam = async () => {
         try {
             const list = await apiCall('team');
             setMembers(list);
+            
+            const meRes = await apiCall('auth/me');
+            setActiveWorkspace(meRes.workspace);
+            if (meRes.workspace && (meRes.role === 'admin' || meRes.role === 'owner')) {
+                await fetchJoinRequests(meRes.workspace._id);
+            }
+            
             const role = localStorage.getItem('docu_user_role') || 'member';
             setUserRole(role);
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleResolveRequest = async (requestId: string, action: 'approve' | 'reject') => {
+        if (!activeWorkspace) return;
+        try {
+            await apiCall(`workspaces/${activeWorkspace._id}/admin/join-requests/${requestId}/resolve`, {
+                method: 'POST',
+                body: { action, role: 'member' }
+            });
+            await fetchJoinRequests(activeWorkspace._id);
+            await fetchTeam();
+        } catch (err: any) {
+            alert(err.message || 'Action failed');
         }
     };
 
@@ -89,6 +121,64 @@ export const TeamManagement: React.FC = () => {
                     </button>
                 )}
             </div>
+
+            {/* Pending Join Requests Section */}
+            {canManageTeam && joinRequests.length > 0 && (
+                <div style={{
+                    background: '#fffbe6',
+                    border: '1px solid #ffe58f',
+                    borderRadius: '12px',
+                    padding: '1.5rem',
+                    marginBottom: '2.5rem',
+                    boxShadow: 'var(--shadow-sm)'
+                }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#d46b08', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>⏳ Pending Join Requests ({joinRequests.length})</span>
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {joinRequests.map((req) => (
+                            <div 
+                                key={req._id}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    flexWrap: 'wrap',
+                                    gap: '1rem',
+                                    padding: '1rem',
+                                    background: '#ffffff',
+                                    border: '1px solid #f0f0f0',
+                                    borderRadius: '8px'
+                                }}
+                            >
+                                <div>
+                                    <div style={{ fontWeight: 700, color: '#1f1f1f', fontSize: '0.9rem' }}>{req.user_id?.full_name}</div>
+                                    <div style={{ color: '#8c8c8c', fontSize: '0.8rem', marginTop: '2px' }}>{req.user_id?.email}</div>
+                                    <div style={{ color: '#bfbfbf', fontSize: '0.72rem', marginTop: '4px' }}>
+                                        Requested: {new Date(req.createdAt).toLocaleString()}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button 
+                                        onClick={() => handleResolveRequest(req._id, 'reject')}
+                                        className="btn btn-secondary"
+                                        style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', color: '#ff4d4f', borderColor: '#ff4d4f', background: 'transparent' }}
+                                    >
+                                        Reject
+                                    </button>
+                                    <button 
+                                        onClick={() => handleResolveRequest(req._id, 'approve')}
+                                        className="btn btn-primary"
+                                        style={{ fontSize: '0.78rem', padding: '0.4rem 0.8rem', background: '#52c41a', borderColor: '#52c41a' }}
+                                    >
+                                        Approve
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="card-table-wrapper" style={{ margin: 0 }}>
                 {loading ? (

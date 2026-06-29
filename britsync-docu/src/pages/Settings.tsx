@@ -32,6 +32,28 @@ export const Settings: React.FC = () => {
         fetchSettings();
     }, []);
 
+    const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('logo', file);
+
+        setSaving(true);
+        try {
+            const res = await apiCall('settings/logo', {
+                method: 'POST',
+                body: formData
+            });
+            setLogoUrl(res.logo_url);
+            alert('Logo uploaded successfully!');
+        } catch (err: any) {
+            alert(err.message || 'Logo upload failed');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
@@ -123,14 +145,23 @@ export const Settings: React.FC = () => {
                     </div>
 
                     <div className="form-group" style={{ marginBottom: '2rem' }}>
-                        <label className="form-label">Logo URL</label>
+                        <label className="form-label">Workspace Logo</label>
+                        {logoUrl && (
+                            <div style={{ marginBottom: '0.8rem' }}>
+                                <img src={logoUrl} alt="Workspace Logo" style={{ maxHeight: '60px', borderRadius: '6px', border: '1px solid #e2e8f0', padding: '4px' }} />
+                            </div>
+                        )}
                         <input
-                            type="url"
-                            className="form-input"
-                            value={logoUrl}
-                            onChange={(e) => setLogoUrl(e.target.value)}
-                            placeholder="https://example.com/logo.png"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoFileChange}
                             disabled={!canSave}
+                            style={{
+                                display: 'block',
+                                width: '100%',
+                                fontSize: '0.85rem',
+                                color: '#64748b'
+                            }}
                         />
                     </div>
 

@@ -19,7 +19,7 @@ export const apiCall = async (endpoint: string, options: ApiOptions = {}) => {
 
     const token = localStorage.getItem('docu_token');
     const defaultHeaders: Record<string, string> = {
-        'Content-Type': 'application/json',
+        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(token && { 'Authorization': `Bearer ${token}` }),
     };
 
