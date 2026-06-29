@@ -157,7 +157,7 @@ const createNotification = async ({ workspace_id, user_id, document_id, type, ti
 
 const PLAN_LIMITS = {
     free: {
-        documents_sent: 7,
+        documents_sent: 3,
         team_members: 1,
         templates: 1,
         custom_branding: false,
@@ -166,8 +166,8 @@ const PLAN_LIMITS = {
         domain_join: false
     },
     pro: {
-        documents_sent: 100,
-        team_members: 3,
+        documents_sent: 50,
+        team_members: 5,
         templates: 9999,
         custom_branding: true,
         bulk_send: false,
@@ -175,8 +175,8 @@ const PLAN_LIMITS = {
         domain_join: false
     },
     business: {
-        documents_sent: 1000,
-        team_members: 25,
+        documents_sent: 500,
+        team_members: 50,
         templates: 9999,
         custom_branding: true,
         bulk_send: true,
@@ -557,6 +557,89 @@ router.post('/onboarding/complete', authenticateDocuToken, async (req, res) => {
 
         res.status(400).json({ message: 'Invalid onboarding choice' });
     } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.get('/onboarding/verify-checkout', authenticateDocuToken, async (req, res) => {
+    try {
+        const { session_id } = req.query;
+        if (!session_id) return res.status(400).json({ message: 'Session ID is required' });
+
+        const stripeSecret = process.env.STRIPE_SECRET_KEY;
+        if (!stripeSecret || !stripe) {
+            return res.json({ success: true, message: 'Simulated checkout success' });
+        }
+
+        const session = await stripe.checkout.sessions.retrieve(session_id);
+        if (session.payment_status !== 'paid') {
+            return res.status(400).json({ message: 'Checkout session is unpaid' });
+        }
+
+        const companyName = session.metadata.company_name;
+        const userId = session.metadata.user_id;
+        const plan = session.metadata.plan || 'pro';
+
+        if (userId !== req.user.id) {
+            return res.status(403).json({ message: 'Unauthorized session' });
+        }
+
+        // Provision workspace if not already done
+        let workspace = await DocuWorkspace.findOne({ owner_id: userId, name: companyName });
+        if (!workspace) {
+            const wsCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+            workspace = new DocuWorkspace({
+                name: companyName,
+                owner_id: userId,
+                workspace_type: 'COMPANY',
+                workspace_code: wsCode,
+                slug: companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                plan: plan,
+                stripe_customer_id: session.customer,
+                stripe_subscription_id: session.subscription,
+                subscription_status: 'active',
+                current_period_start: new Date(),
+                current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            });
+            if (!workspace.slug) workspace.slug = `ws-${wsCode.toLowerCase()}`;
+            const savedWs = await workspace.save();
+
+            await new DocuWorkspaceMember({
+                workspace_id: savedWs._id,
+                user_id: userId,
+                role: 'owner',
+                status: 'joined',
+                joined_at: new Date()
+            }).save();
+
+            await DocuSubscription.findOneAndUpdate(
+                { workspace_id: savedWs._id },
+                {
+                    stripe_customer_id: session.customer,
+                    stripe_subscription_id: session.subscription,
+                    plan,
+                    status: 'active',
+                    current_period_start: workspace.current_period_start,
+                    current_period_end: workspace.current_period_end
+                },
+                { upsert: true }
+            );
+
+            await DocuUser.findByIdAndUpdate(userId, {
+                onboarding_completed: true,
+                default_workspace_id: savedWs._id
+            });
+        }
+
+        const token = jwt.sign(
+            { id: req.user.id, email: req.user.email, workspaceId: workspace._id },
+            process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
+            { expiresIn: '7d' }
+        );
+
+        res.json({ success: true, token, workspace });
+    } catch (err) {
+        console.error('Verify checkout failed:', err);
         res.status(500).json({ message: err.message });
     }
 });
@@ -2557,7 +2640,105 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 router.post('/billing/create-checkout-session', authenticateDocuToken, async (req, res) => {
     try {
-        const { plan, interval } = req.body; // plan: 'pro' | 'business', interval: 'monthly' | 'yearly'
+        const { plan, interval, action, company_name } = req.body; // plan: 'pro' | 'business', interval: 'monthly' | 'yearly'
+        const stripeSecret = process.env.STRIPE_SECRET_KEY;
+
+        if (action === 'create_company') {
+            if (!company_name || !company_name.trim()) {
+                return res.status(400).json({ message: 'Company name is required for creating a company workspace' });
+            }
+
+            // Local development simulation
+            if (!stripeSecret || !stripe) {
+                if (isDev) {
+                    const wsCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+                    const workspace = new DocuWorkspace({
+                        name: company_name,
+                        owner_id: req.user.id,
+                        workspace_type: 'COMPANY',
+                        workspace_code: wsCode,
+                        slug: company_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                        plan: plan || 'pro',
+                        subscription_status: 'active',
+                        current_period_start: new Date(),
+                        current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                    });
+                    if (!workspace.slug) workspace.slug = `ws-${wsCode.toLowerCase()}`;
+                    const savedWs = await workspace.save();
+
+                    await new DocuWorkspaceMember({
+                        workspace_id: savedWs._id,
+                        user_id: req.user.id,
+                        role: 'owner',
+                        status: 'joined',
+                        joined_at: new Date()
+                    }).save();
+
+                    await DocuSubscription.findOneAndUpdate(
+                        { workspace_id: savedWs._id },
+                        {
+                            stripe_customer_id: 'mock_cust_123',
+                            stripe_subscription_id: 'mock_sub_123',
+                            plan: plan || 'pro',
+                            status: 'active',
+                            price_id: 'mock_price_123',
+                            current_period_start: new Date(),
+                            current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                        },
+                        { upsert: true }
+                    );
+
+                    await DocuUser.findByIdAndUpdate(req.user.id, {
+                        onboarding_completed: true,
+                        default_workspace_id: savedWs._id
+                    });
+
+                    return res.json({ 
+                        url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/onboarding?checkout_success=true&simulated=true`,
+                        simulated: true 
+                    });
+                } else {
+                    return res.status(500).json({ 
+                        message: 'Stripe integration is not configured on the production server. Checkout is disabled.' 
+                    });
+                }
+            }
+
+            const unitAmount = plan === 'business' ? 9900 : 2900;
+            const planDesc = plan === 'business' 
+                ? 'Up to 50 team members, 500 documents per month, bulk send & signer auth.' 
+                : 'Up to 5 team members, 50 documents per month, templates & custom branding.';
+
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{
+                    price_data: {
+                        currency: 'usd',
+                        product_data: {
+                            name: `BritSync Docu ${plan === 'business' ? 'Business' : 'Pro'} Company Plan`,
+                            description: planDesc
+                        },
+                        unit_amount: unitAmount,
+                        recurring: { interval: 'month' }
+                    },
+                    quantity: 1
+                }],
+                mode: 'subscription',
+                success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/onboarding?checkout_success=true&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/onboarding?canceled=true`,
+                customer_email: req.user.email,
+                metadata: {
+                    action: 'create_company',
+                    company_name,
+                    user_id: req.user.id,
+                    plan
+                }
+            });
+
+            return res.json({ url: session.url });
+        }
+
+        // Standard subscription upgrade for existing workspace
         const wsId = req.user.workspaceId;
         const ws = await DocuWorkspace.findById(wsId);
         if (!ws) return res.status(404).json({ message: 'Workspace not found' });
@@ -2566,14 +2747,8 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
             return res.status(403).json({ message: 'Only the workspace owner can manage subscriptions' });
         }
 
-        const priceKey = `STRIPE_PRICE_${plan.toUpperCase()}_${interval.toUpperCase()}`;
-        const priceId = process.env[priceKey];
-
-        const stripeSecret = process.env.STRIPE_SECRET_KEY;
-
         if (!stripeSecret || !stripe) {
             if (isDev) {
-                // LOCAL DEVELOPMENT SIMULATION
                 ws.plan = plan;
                 ws.subscription_status = 'active';
                 ws.current_period_start = new Date();
@@ -2587,7 +2762,7 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
                         stripe_subscription_id: 'mock_sub_123',
                         plan,
                         status: 'active',
-                        price_id: priceId || 'mock_price_123',
+                        price_id: 'mock_price_123',
                         current_period_start: new Date(),
                         current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
                     },
@@ -2605,9 +2780,21 @@ router.post('/billing/create-checkout-session', authenticateDocuToken, async (re
             }
         }
 
+        const unitAmount = plan === 'business' ? 9900 : 2900;
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
-            line_items: [{ price: priceId, quantity: 1 }],
+            line_items: [{
+                price_data: {
+                    currency: 'usd',
+                    product_data: {
+                        name: `BritSync Docu ${plan === 'business' ? 'Business' : 'Pro'} Plan`,
+                        description: `Upgrade your workspace to ${plan}`
+                    },
+                    unit_amount: unitAmount,
+                    recurring: { interval: 'month' }
+                },
+                quantity: 1
+            }],
             mode: 'subscription',
             success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/billing?success=true`,
             cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/docu/billing?canceled=true`,
@@ -2704,8 +2891,69 @@ router.post('/billing/webhook', async (req, res) => {
                 const session = event.data.object;
                 const wsId = session.client_reference_id || session.metadata.workspaceId;
                 const plan = session.metadata.plan || 'pro';
-                
-                if (wsId) {
+                const action = session.metadata.action;
+                const companyName = session.metadata.company_name;
+                const userId = session.metadata.user_id;
+
+                if (action === 'create_company' && companyName && userId) {
+                    let existingWs = await DocuWorkspace.findOne({ owner_id: userId, name: companyName });
+                    if (!existingWs) {
+                        const wsCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+                        const workspace = new DocuWorkspace({
+                            name: companyName,
+                            owner_id: userId,
+                            workspace_type: 'COMPANY',
+                            workspace_code: wsCode,
+                            slug: companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+                            plan: plan,
+                            stripe_customer_id: session.customer,
+                            stripe_subscription_id: session.subscription,
+                            subscription_status: 'active'
+                        });
+                        if (!workspace.slug) workspace.slug = `ws-${wsCode.toLowerCase()}`;
+                        
+                        if (stripeSecret && stripe && session.subscription) {
+                            try {
+                                const sub = await stripe.subscriptions.retrieve(session.subscription);
+                                workspace.current_period_start = new Date(sub.current_period_start * 1000);
+                                workspace.current_period_end = new Date(sub.current_period_end * 1000);
+                            } catch (e) {
+                                workspace.current_period_start = new Date();
+                                workspace.current_period_end = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                            }
+                        } else {
+                            workspace.current_period_start = new Date();
+                            workspace.current_period_end = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                        }
+                        const savedWs = await workspace.save();
+
+                        await new DocuWorkspaceMember({
+                            workspace_id: savedWs._id,
+                            user_id: userId,
+                            role: 'owner',
+                            status: 'joined',
+                            joined_at: new Date()
+                        }).save();
+
+                        await DocuSubscription.findOneAndUpdate(
+                            { workspace_id: savedWs._id },
+                            {
+                                stripe_customer_id: session.customer,
+                                stripe_subscription_id: session.subscription,
+                                plan,
+                                status: 'active',
+                                current_period_start: workspace.current_period_start,
+                                current_period_end: workspace.current_period_end
+                            },
+                            { upsert: true }
+                        );
+
+                        await DocuUser.findByIdAndUpdate(userId, {
+                            onboarding_completed: true,
+                            default_workspace_id: savedWs._id
+                        });
+                    }
+                } else if (wsId) {
                     const ws = await DocuWorkspace.findById(wsId);
                     if (ws) {
                         ws.plan = plan;

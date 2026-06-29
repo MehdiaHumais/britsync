@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiCall } from '../utils/api';
-import { Users, User, ArrowRight, Check, Search, Building } from 'lucide-react';
+import { Users, User, ArrowRight, Check, Search, Building, CreditCard, RefreshCw } from 'lucide-react';
 
 export const Onboarding: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [choice, setChoice] = useState<'none' | 'create' | 'join'>('none');
     const [companyName, setCompanyName] = useState('');
+    const [selectedPlan, setSelectedPlan] = useState<'pro' | 'business'>('pro');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<any[]>([]);
     const [selectedWs, setSelectedWs] = useState<any | null>(null);
@@ -15,11 +16,35 @@ export const Onboarding: React.FC = () => {
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
     const [user, setUser] = useState<any>(null);
+    const [verifyingPayment, setVerifyingPayment] = useState(false);
 
     useEffect(() => {
         const action = searchParams.get('action');
         if (action === 'create') setChoice('create');
         if (action === 'join') setChoice('join');
+
+        const checkoutSuccess = searchParams.get('checkout_success');
+        const sessionId = searchParams.get('session_id');
+
+        if (checkoutSuccess && sessionId) {
+            setVerifyingPayment(true);
+            apiCall(`onboarding/verify-checkout?session_id=${sessionId}`)
+                .then(data => {
+                    localStorage.setItem('docu_token', data.token);
+                    setSuccessMessage('Payment successful! Your company workspace has been provisioned and is ready for use.');
+                    setTimeout(() => {
+                        window.location.href = '/docu/dashboard';
+                    }, 3000);
+                })
+                .catch(err => {
+                    console.error('Checkout verification failed:', err);
+                    setError(err.message || 'Payment verification failed. Please contact support.');
+                })
+                .finally(() => {
+                    setVerifyingPayment(false);
+                });
+            return;
+        }
 
         // Fetch current user details
         apiCall('auth/me').then(data => {
@@ -53,14 +78,24 @@ export const Onboarding: React.FC = () => {
         setLoading(true);
         setError('');
         try {
-            const data = await apiCall('onboarding/complete', {
+            // Redirect to Stripe Checkout Session
+            const data = await apiCall('billing/create-checkout-session', {
                 method: 'POST',
-                body: { choice: 'create-company', company_name: companyName }
+                body: {
+                    action: 'create_company',
+                    company_name: companyName,
+                    plan: selectedPlan,
+                    interval: 'monthly'
+                }
             });
-            localStorage.setItem('docu_token', data.token);
-            navigate('/dashboard');
+
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                throw new Error('Failed to initiate checkout session');
+            }
         } catch (err: any) {
-            setError(err.message || 'Failed to create company workspace');
+            setError(err.message || 'Failed to create checkout session');
         } finally {
             setLoading(false);
         }
@@ -102,6 +137,26 @@ export const Onboarding: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (verifyingPayment) {
+        return (
+            <div style={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                color: '#ffffff',
+                fontFamily: '"Inter", sans-serif'
+            }}>
+                <div style={{ textAlign: 'center' }}>
+                    <RefreshCw className="spinner" size={48} style={{ color: '#3b82f6', marginBottom: '1.5rem' }} />
+                    <h3 style={{ fontSize: '1.5rem', fontWeight: 800 }}>Verifying Subscription Payment...</h3>
+                    <p style={{ color: '#94a3b8', marginTop: '0.5rem' }}>We are securing your company workspace. Please do not close this window.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{
@@ -167,11 +222,8 @@ export const Onboarding: React.FC = () => {
                         }}>
                             <Check size={24} />
                         </div>
-                        <h4 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>Request Submitted</h4>
+                        <h4 style={{ fontSize: '1.25rem', fontWeight: 800, marginBottom: '0.5rem' }}>Success!</h4>
                         <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.6 }}>{successMessage}</p>
-                        <button onClick={() => navigate('/dashboard')} className="btn btn-primary" style={{ marginTop: '1.5rem', background: '#3b82f6' }}>
-                            Go to Dashboard
-                        </button>
                     </div>
                 ) : choice === 'none' ? (
                     /* Onboarding Options Cards Grid */
@@ -319,7 +371,7 @@ export const Onboarding: React.FC = () => {
                         </div>
                     </div>
                 ) : choice === 'create' ? (
-                    /* Create Company Form Card */
+                    /* Create Company Form Card with Stripe Selection */
                     <div style={{
                         background: 'rgba(255, 255, 255, 0.03)',
                         border: '1px solid rgba(255, 255, 255, 0.06)',
@@ -327,9 +379,9 @@ export const Onboarding: React.FC = () => {
                         padding: '2.5rem',
                         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
                     }}>
-                        <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Create corporate workspace</h3>
+                        <h3 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '0.5rem' }}>Create Company Workspace</h3>
                         <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '2rem' }}>
-                            Setup a company workspace to collaborate with your team, branding templates, and enforce signing access controls.
+                            Choose a corporate plan to unlock team settings, custom branding, templates, and high-volume document execution.
                         </p>
 
                         <form onSubmit={handleCreateCompany} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -355,22 +407,87 @@ export const Onboarding: React.FC = () => {
                                 />
                             </div>
 
+                            {/* Plan Options Grid */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <label className="form-label" style={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: 600 }}>Select Plan Tier:</label>
+                                
+                                {/* Pro Plan */}
+                                <div 
+                                    onClick={() => setSelectedPlan('pro')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '1.25rem',
+                                        borderRadius: '12px',
+                                        border: selectedPlan === 'pro' ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.08)',
+                                        background: selectedPlan === 'pro' ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.01)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff' }}>🏢 Pro Company</div>
+                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px' }}>
+                                            50 documents/mo • Up to 5 team members • Templates & Branding
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ffffff' }}>$29</div>
+                                        <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>per month</div>
+                                    </div>
+                                </div>
+
+                                {/* Business Plan */}
+                                <div 
+                                    onClick={() => setSelectedPlan('business')}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '1.25rem',
+                                        borderRadius: '12px',
+                                        border: selectedPlan === 'business' ? '2px solid #10b981' : '1px solid rgba(255,255,255,0.08)',
+                                        background: selectedPlan === 'business' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.01)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#ffffff' }}>🚀 Business Company</div>
+                                        <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px' }}>
+                                            500 documents/mo • Up to 50 team members • Bulk send & Signer OTP
+                                        </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ffffff' }}>$99</div>
+                                        <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>per month</div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                                 <button
                                     type="button"
                                     onClick={() => setChoice('none')}
                                     className="btn btn-secondary"
-                                    style={{ flex: 1, justifyContent: 'center', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1' }}
+                                    style={{ flex: 1, justifyContent: 'center', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1', background: 'transparent' }}
                                 >
                                     Back
                                 </button>
                                 <button
                                     type="submit"
                                     className="btn btn-primary"
-                                    style={{ flex: 1, justifyContent: 'center', background: '#3b82f6' }}
+                                    style={{ 
+                                        flex: 1, 
+                                        justifyContent: 'center', 
+                                        background: selectedPlan === 'business' ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                                        boxShadow: selectedPlan === 'business' ? '0 4px 12px rgba(16,185,129,0.2)' : '0 4px 12px rgba(59,130,246,0.2)'
+                                    }}
                                     disabled={loading}
                                 >
-                                    {loading ? 'Creating...' : 'Create Workspace'}
+                                    <CreditCard size={16} style={{ marginRight: '6px' }} />
+                                    {loading ? 'Redirecting...' : 'Subscribe & Create'}
                                 </button>
                             </div>
                         </form>
@@ -454,7 +571,7 @@ export const Onboarding: React.FC = () => {
                                 type="button"
                                 onClick={() => { setChoice('none'); setSearchResults([]); setSelectedWs(null); }}
                                 className="btn btn-secondary"
-                                style={{ flex: 1, justifyContent: 'center', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1' }}
+                                style={{ flex: 1, justifyContent: 'center', borderColor: 'rgba(255, 255, 255, 0.1)', color: '#cbd5e1', background: 'transparent' }}
                             >
                                 Back
                             </button>

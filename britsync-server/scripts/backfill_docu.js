@@ -24,7 +24,10 @@ async function run() {
     }
 
     console.log('Connecting to MongoDB at:', uri);
-    await mongoose.connect(uri);
+    await mongoose.connect(uri, {
+        tlsAllowInvalidCertificates: true,
+        tlsAllowInvalidHostnames: true
+    });
     console.log('Connected successfully!');
 
     try {

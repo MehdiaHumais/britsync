@@ -243,7 +243,9 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI, {
   connectTimeoutMS: 30000,
-  socketTimeoutMS: 45000
+  socketTimeoutMS: 45000,
+  tlsAllowInvalidCertificates: true,
+  tlsAllowInvalidHostnames: true
 })
   .then(() => {
     console.log('MongoDB Connected successfully');
