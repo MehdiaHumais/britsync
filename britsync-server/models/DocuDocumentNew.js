@@ -12,10 +12,14 @@ const RecipientSchema = new mongoose.Schema({
     completed_at: { type: Date },
     ip_address: { type: String, default: '' },
     user_agent: { type: String, default: '' },
+    auth_method: { type: String, enum: ['none', 'passcode', 'otp'], default: 'none' },
+    passcode_hash: { type: String, default: '' },
     otp_hash: { type: String, default: '' },
     otp_expiry: { type: Date },
     otp_retries: { type: Number, default: 0 },
-    otp_cooldown_until: { type: Date }
+    otp_cooldown_until: { type: Date },
+    otp_verified_at: { type: Date },
+    auth_verified_at: { type: Date }
 }, { timestamps: true });
 
 const DocumentFieldSchema = new mongoose.Schema({
@@ -71,7 +75,13 @@ const DocuDocumentNewSchema = new mongoose.Schema({
     cancelled_at: { type: Date },
     archived_at: { type: Date },
     recipients: [RecipientSchema],
-    fields: [DocumentFieldSchema]
+    fields: [DocumentFieldSchema],
+    approval_status: { type: String, enum: ['not_required', 'pending', 'approved', 'rejected'], default: 'not_required' },
+    approval_requested_by: { type: mongoose.Schema.Types.ObjectId, ref: 'DocuUser' },
+    approval_requested_at: { type: Date },
+    approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'DocuUser' },
+    approved_at: { type: Date },
+    rejection_reason: { type: String, default: '' }
 }, {
     timestamps: true,
     collection: 'docu_documents'
