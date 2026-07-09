@@ -51,11 +51,10 @@ export const apiCall = async (endpoint: string, options: ApiOptions = {}) => {
 export const getImageUrl = (imagePath: string): string => {
     if (!imagePath) return '';
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
+        return imagePath.replace(/^https?:\/\/[^\/]+/, '');
     }
-    const apiBase = getApiBaseUrl();
     if (imagePath.startsWith('/uploads/')) {
-        return `${apiBase}${imagePath}`;
+        return imagePath;
     }
     return imagePath;
 };

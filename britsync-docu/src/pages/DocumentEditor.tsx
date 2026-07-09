@@ -72,6 +72,10 @@ export const DocumentEditor: React.FC = () => {
     const [zoom, setZoom] = useState<number>(1.2);
     const [saving, setSaving] = useState(false);
     const [loadingPdf, setLoadingPdf] = useState(true);
+
+    // Mobile toggle states
+    const [showToolbelt, setShowToolbelt] = useState(false);
+    const [showPropsPanel, setShowPropsPanel] = useState(false);
     
     // Quick Add Signer states
     const [newSignerName, setNewSignerName] = useState('');
@@ -200,7 +204,20 @@ export const DocumentEditor: React.FC = () => {
 
                 // Load PDF in background
                 const pdfjs = await loadPdfJs();
-                const loadedPdf = await pdfjs.getDocument(docData.original_file_url).promise;
+                const token = localStorage.getItem('docu_token');
+                const pdfUrl = `/api/docu/documents/${id}/file`;
+                console.log('Fetching PDF from:', pdfUrl);
+                const pdfResponse = await fetch(pdfUrl, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                console.log('PDF response status:', pdfResponse.status, pdfResponse.statusText);
+                if (!pdfResponse.ok) throw new Error(`HTTP ${pdfResponse.status}: ${pdfResponse.statusText}`);
+                const json = await pdfResponse.json();
+                if (!json.success || !json.data) throw new Error('PDF response is empty');
+                const pdfBuffer = Uint8Array.from(atob(json.data), c => c.charCodeAt(0));
+                console.log('PDF buffer size:', pdfBuffer.length);
+                if (!pdfBuffer || pdfBuffer.length === 0) throw new Error('PDF response is empty (0 bytes)');
+                const loadedPdf = await pdfjs.getDocument({ data: pdfBuffer }).promise;
                 setPdfDoc(loadedPdf);
                 setNumPages(loadedPdf.numPages);
             } catch (err) {
@@ -508,10 +525,9 @@ export const DocumentEditor: React.FC = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f8fafc' }}>
+        <div className="editor-root">
             {/* Editor Top Bar */}
-            <div style={{
-                height: '64px',
+            <div className="editor-topbar" style={{
                 background: 'white',
                 borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
@@ -524,11 +540,14 @@ export const DocumentEditor: React.FC = () => {
                 boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-                    <button className="btn btn-secondary" style={{ padding: '0.45rem 0.9rem' }} onClick={() => navigate('/documents')}>
-                        <ArrowLeft size={16} /> Back
+                    <button className="btn btn-secondary editor-mobile-toggle-btn" style={{ padding: '0.4rem', minWidth: 'auto', fontSize: '1.1rem' }} onClick={() => setShowToolbelt(s => !s)} title="Toggle tools">
+                        ☰
                     </button>
-                    <span style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>{doc?.document_name}</span>
-                    <span style={{
+                    <button className="btn btn-secondary" style={{ padding: '0.45rem 0.9rem' }} onClick={() => navigate('/documents')}>
+                        <ArrowLeft size={16} /> <span className="editor-topbar-mobile-hide">Back</span>
+                    </button>
+                    <span className="editor-topbar-mobile-hide" style={{ fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>{doc?.document_name}</span>
+                    <span className="editor-topbar-mobile-hide" style={{
                         fontSize: '0.7rem',
                         padding: '2px 8px',
                         background: autosaveStatus === 'saved' ? '#ecfdf5' : autosaveStatus === 'saving' ? '#eff6ff' : '#fffbeb',
@@ -543,7 +562,7 @@ export const DocumentEditor: React.FC = () => {
                 {/* Undo / Redo & Zoom Controls */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <button 
-                        className="btn btn-secondary" 
+                        className="btn btn-secondary editor-topbar-mobile-hide" 
                         style={{ padding: '0.4rem', minWidth: 'auto' }} 
                         onClick={handleUndo} 
                         disabled={historyIdx <= 0} 
@@ -552,7 +571,7 @@ export const DocumentEditor: React.FC = () => {
                         <Undo2 size={15} />
                     </button>
                     <button 
-                        className="btn btn-secondary" 
+                        className="btn btn-secondary editor-topbar-mobile-hide" 
                         style={{ padding: '0.4rem', minWidth: 'auto' }} 
                         onClick={handleRedo} 
                         disabled={historyIdx >= history.length - 1} 
@@ -560,7 +579,7 @@ export const DocumentEditor: React.FC = () => {
                     >
                         <Redo2 size={15} />
                     </button>
-                    <div style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 0.5rem' }} />
+                    <div className="editor-topbar-mobile-hide" style={{ width: '1px', height: '24px', background: '#e2e8f0', margin: '0 0.5rem' }} />
                     
                     <button className="btn btn-secondary" style={{ padding: '0.4rem', minWidth: 'auto' }} onClick={() => setZoom(z => Math.max(0.6, z - 0.1))} title="Zoom Out">
                         <ZoomOut size={15} />
@@ -571,35 +590,40 @@ export const DocumentEditor: React.FC = () => {
                     <button className="btn btn-secondary" style={{ padding: '0.4rem', minWidth: 'auto' }} onClick={() => setZoom(z => Math.min(2.0, z + 0.1))} title="Zoom In">
                         <ZoomIn size={15} />
                     </button>
+                    <button className="btn btn-secondary editor-mobile-toggle-btn" style={{ padding: '0.4rem', minWidth: 'auto' }} onClick={() => setShowPropsPanel(s => !s)} title="Toggle properties">
+                        ⚙
+                    </button>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div className="editor-topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <button 
-                        className="btn btn-secondary" 
+                        className="btn btn-secondary editor-smart-btn" 
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#7c3aed', borderColor: '#d8b4fe', background: '#faf5ff', fontWeight: 800 }} 
                         onClick={handleAutoPlaceFields} 
                         disabled={scanningPDF || loadingPdf}
                     >
-                        <span>{scanningPDF ? 'Scanning...' : '✨ Smart Auto-Place'}</span>
+                        <span className="editor-smart-label">{scanningPDF ? 'Scanning...' : '✨ Smart Auto-Place'}</span>
                     </button>
-                    <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving}>
-                        <Save size={16} /> Save Draft
+                    <button className="btn btn-secondary editor-topbar-btn" onClick={handleSaveDraft} disabled={saving}>
+                        <Save size={16} /> <span className="editor-topbar-btn-text">Save Draft</span>
                     </button>
-                    <button className="btn btn-primary" onClick={handleContinue} disabled={saving}>
-                        Continue <ArrowRight size={16} />
+                    <button className="btn btn-primary editor-topbar-btn" onClick={handleContinue} disabled={saving}>
+                        <span className="editor-topbar-btn-text">Continue</span> <ArrowRight size={16} />
                     </button>
                 </div>
             </div>
 
+            {/* Mobile overlay backdrops */}
+            {showToolbelt && <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.3)' }} onClick={() => setShowToolbelt(false)} />}
+            {showPropsPanel && <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,0.3)' }} onClick={() => setShowPropsPanel(false)} />}
+            
             {/* Editor Workspace */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
                 {/* Left Toolbelt */}
-                <div style={{
+                <div className={`editor-toolbelt${showToolbelt ? ' open' : ''}`} style={{
                     width: '240px',
                     background: 'white',
                     borderRight: '1px solid #e2e8f0',
-                    display: 'flex',
-                    flexDirection: 'column',
                     padding: '1.25rem 0.75rem',
                     overflowY: 'auto'
                 }}>
@@ -644,7 +668,7 @@ export const DocumentEditor: React.FC = () => {
                 </div>
 
                 {/* Main Scrollable Canvas */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', backgroundColor: '#f1f5f9' }}>
+                <div className="editor-canvas-area" style={{ overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', backgroundColor: '#f1f5f9' }}>
                     {loadingPdf ? (
                         <div style={{ display: 'flex', minHeight: '50vh', alignItems: 'center', justifyContent: 'center' }}>
                             <div className="spinner"></div>
@@ -674,13 +698,11 @@ export const DocumentEditor: React.FC = () => {
                 </div>
 
                 {/* Right Config Panel */}
-                <div style={{
+                <div className={`editor-props-panel${showPropsPanel ? ' open' : ''}`} style={{
                     width: '300px',
                     background: 'white',
                     borderLeft: '1px solid #e2e8f0',
                     padding: '1.5rem 1.25rem',
-                    display: 'flex',
-                    flexDirection: 'column',
                     gap: '1.25rem',
                     overflowY: 'auto'
                 }}>
@@ -945,7 +967,7 @@ export const DocumentEditor: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.85rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1.5rem' }}>
+                        <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.85rem', borderBottom: '1px solid #e2e8f0' }}>
                             <HelpCircle size={20} style={{ margin: '0 auto 0.5rem auto', opacity: 0.5 }} />
                             Select a placed element boundary to configure properties.
                         </div>
@@ -1345,8 +1367,9 @@ const EditorPageContainer: React.FC<PageContainerProps> = ({
     return (
         <div style={{
             position: 'relative',
-            width: dimensions.width,
-            height: dimensions.height,
+            width: '100%',
+            maxWidth: dimensions.width,
+            aspectRatio: `${dimensions.width} / ${dimensions.height}`,
             border: '1px solid #cbd5e1',
             borderRadius: '4px',
             background: 'white',

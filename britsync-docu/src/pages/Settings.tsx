@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { apiCall } from '../utils/api';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import UpgradeModal from '../components/ui/UpgradeModal';
-import { Save, RefreshCw, Link2, Trash2, Server, Terminal, X } from 'lucide-react';
+import { Save, RefreshCw, Link2, Trash2, Server, Terminal, X, Fingerprint, Mail, Lock, Check, AlertCircle } from 'lucide-react';
 import { Select } from '../components/ui/Select';
+import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 
 export const Settings: React.FC = () => {
     const [workspace, setWorkspace] = useState<any>(null);
@@ -36,6 +37,19 @@ export const Settings: React.FC = () => {
 
     const [userRole, setUserRole] = useState(localStorage.getItem('docu_user_role') || 'member');
     const canSave = userRole === 'admin' || userRole === 'owner';
+
+    // Fingerprint backup credentials
+    const [fpStatus, setFpStatus] = useState<{ is_fingerprint_user: boolean; has_backup_credentials: boolean; email: string } | null>(null);
+    const [showBackupModal, setShowBackupModal] = useState(false);
+
+    const fetchFingerprintStatus = async () => {
+        try {
+            const data = await apiCall('auth/fingerprint/status');
+            setFpStatus(data);
+        } catch {
+            // not a fingerprint user, ignore
+        }
+    };
 
     const fetchSettings = async () => {
         try {
@@ -71,6 +85,7 @@ export const Settings: React.FC = () => {
 
     useEffect(() => {
         fetchSettings();
+        fetchFingerprintStatus();
     }, []);
 
     const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -610,6 +625,53 @@ export const Settings: React.FC = () => {
                     </form>
                 </div>
             )}
+
+            {/* Fingerprint Backup Credentials */}
+            {fpStatus && (
+                <div style={{
+                    maxWidth: '600px', background: 'white', border: '1px solid #e2e8f0',
+                    borderRadius: '12px', padding: '2rem', boxShadow: 'var(--shadow-sm)'
+                }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+                        <div style={{ padding: '8px', background: '#eff6ff', color: '#2563eb', borderRadius: '8px' }}>
+                            <Fingerprint size={20} />
+                        </div>
+                        <div>
+                            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                                Fingerprint Account
+                            </h3>
+                            <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.25rem' }}>
+                                {fpStatus.has_backup_credentials
+                                    ? `Backup email: ${fpStatus.email}`
+                                    : 'No backup credentials set. Add email/password to log in from other devices.'}
+                            </p>
+                        </div>
+                    </div>
+                    {fpStatus.has_backup_credentials ? (
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', color: '#10b981', fontSize: '0.85rem', fontWeight: 600 }}>
+                            <Check size={16} /> Backup credentials configured
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => setShowBackupModal(true)}
+                            style={{
+                                padding: '0.6rem 1.25rem', borderRadius: '8px',
+                                border: 'none', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                                color: 'white', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                        >
+                            Set Backup Credentials
+                        </button>
+                    )}
+                </div>
+            )}
+
+            <BackupCredentialsModal
+                open={showBackupModal}
+                onClose={() => setShowBackupModal(false)}
+                onComplete={() => { setShowBackupModal(false); fetchFingerprintStatus(); }}
+            />
 
             {/* Global Upgrade gating blocker */}
             <UpgradeModal

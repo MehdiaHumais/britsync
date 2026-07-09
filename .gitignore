@@ -11,6 +11,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.*
+.env.example
 service-account.json
 *-service-account.json
 *.credentials.json
@@ -22,6 +24,26 @@ dist/
 build/
 out/
 *.zip
+.next/
+
+# =====================
+# Python
+# =====================
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+.venv/
+venv/
+*.so
+
+# =====================
+# Database
+# =====================
+*.db
+*.sqlite
+*.sqlite3
 
 # =====================
 # Logs
@@ -40,6 +62,8 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # =====================
 # Temp / Scratch
@@ -48,11 +72,34 @@ tmp/
 scratch/
 
 # =====================
-# Large assets / Temp Uploads
+# IDE / Project files
+# =====================
+*.iml
+*.ipr
+*.iws
+
+# =====================
+# Large / Generated assets
 # =====================
 *.zip
 ui.zip
 vite.svg
-britsync-server/uploads/*.pdf
-britsync-server/uploads/*.docx
+britsync-server/uploads/
 britsync-server/scratch_test_pdf_pages.js
+news-automation/public/news-images/
+news-automation/check_feeds.py
+news-automation/refetch_summaries.py
+
+# =====================
+# Nested sub-projects
+# =====================
+britsync-docu/finger print sighup/
+
+# =====================
+# Debug / Test files
+# =====================
+build_error*.txt
+article_debug.html
+article_output.html
+page_check.html
+page_trigger.html

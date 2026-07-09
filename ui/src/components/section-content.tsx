@@ -1,6 +1,3 @@
-
-import { prisma } from "@/lib/db";
-import { Article } from "@prisma/client";
 import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
@@ -11,16 +8,45 @@ interface SectionContentProps {
     displayTitle: string;
 }
 
+interface NewsArticle {
+    id: number;
+    title: string;
+    summary: string;
+    link: string;
+    publish_date: string;
+    category: string;
+    image_url: string | null;
+}
+
+const SECTION_MAP: Record<string, string> = {
+    "WORLD_NEWS": "world",
+    "AI": "ai",
+    "LIFESTYLE": "lifestyle",
+};
+
+const API_BASE = process.env.NEWS_API_URL || "http://127.0.0.1:8000";
+
+function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, "").trim();
+}
+
+function imageUrl(raw: string | null): string {
+    if (!raw) return "";
+    if (raw.startsWith("http")) return raw;
+    return `${API_BASE}/public${raw}`;
+}
+
 export default async function SectionContent({ dataSection, displayTitle }: SectionContentProps) {
-    let articles: Article[] = [];
+    let articles: NewsArticle[] = [];
+    const cat = SECTION_MAP[dataSection] || "world";
+
     try {
-        articles = await prisma.article.findMany({
-            where: { section: dataSection },
-            orderBy: { createdAt: "desc" },
-            take: 30
-        });
+        const res = await fetch(`${API_BASE}/news/${cat}`, { cache: "no-store" });
+        if (res.ok) {
+            articles = await res.json();
+        }
     } catch (err) {
-        console.error(`SectionContent (${dataSection}): DB access failed.`, err);
+        console.error(`SectionContent (${dataSection}): FastAPI fetch failed.`, err);
     }
 
     return (
@@ -38,39 +64,35 @@ export default async function SectionContent({ dataSection, displayTitle }: Sect
 
                 {articles.length > 0 ? (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {articles.map((article: Article) => (
-                            <div key={article.id} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
-                                <Link href={`/article/${article.slug}`} className="relative mb-6 overflow-hidden aspect-video block">
+                        {articles.map((article) => (
+                            <Link key={article.id} href={`/news/story/${article.id}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
+                                <div className="relative mb-6 overflow-hidden aspect-video block">
                                     <SafeImage
-                                        src={article.thumbnail || ""}
+                                        src={imageUrl(article.image_url)}
                                         alt={article.title}
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                     />
-                                    {article.isPremium && (
-                                        <div className="absolute top-4 right-4 bg-stone-900 text-white text-[10px] uppercase font-bold px-3 py-1 tracking-widest">
-                                            Premium
-                                        </div>
-                                    )}
-                                </Link>
-                                <Link href={`/article/${article.slug}`}>
-                                    <h3 className="text-2xl font-serif font-bold mb-4 flex-1 leading-tight hover:text-stone-600 transition-colors">
-                                        {article.title}
-                                    </h3>
-                                </Link>
+                                </div>
+                                <h3 className="text-2xl font-serif font-bold mb-4 flex-1 leading-tight group-hover:text-stone-600 transition-colors">
+                                    {article.title}
+                                </h3>
+                                <p className="text-stone-500 text-sm leading-relaxed mb-4 flex-1 line-clamp-3">
+                                    {stripHtml(article.summary || stripHtml(article.title)).slice(0, 200)}
+                                </p>
                                 <div className="flex items-center justify-between pt-6 border-t border-stone-100">
                                     <span className="text-xs font-mono text-stone-400 uppercase">
-                                        {article.createdAt ? new Date(article.createdAt).toLocaleDateString() : "Live Report"}
+                                        {article.publish_date ? new Date(article.publish_date).toLocaleDateString() : "Live Report"}
                                     </span>
-                                    <Link href={`/article/${article.slug}`} className="font-serif italic text-stone-900 text-sm group-hover:translate-x-1 transition-transform">
+                                    <span className="font-serif italic text-stone-900 text-sm group-hover:translate-x-1 transition-transform">
                                         Read Story &rarr;
-                                    </Link>
+                                    </span>
                                 </div>
-                            </div>
+                            </Link>
                         ))}
                     </div>
                 ) : (
                     <div className="text-center py-20 border border-dashed border-stone-200">
-                        <p className="text-stone-400 font-serif italic mb-4">No investigation reports available in {displayTitle} at the moment.</p>
+                        <p className="text-stone-400 font-serif italic mb-4">No news available in {displayTitle} at the moment.</p>
                         <Link href="/">
                             <button className="px-6 py-2 bg-stone-900 text-white rounded-full uppercase tracking-widest text-[10px] font-bold">Return Home</button>
                         </Link>

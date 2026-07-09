@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const dns = require('dns');
 
 // Fix for MongoDB Atlas DNS SRV Resolution on some Windows/VPS environments
@@ -188,7 +188,15 @@ app.post('/api/auth/change-password', authenticateToken, [
   }
 });
 
-// Static folder for uploads
+// Static folder for uploads - with explicit CORS
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Range');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Ensure uploads directory exists

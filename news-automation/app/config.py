@@ -1,8 +1,9 @@
 # RSS Feed URLs for different categories
+# Using feeds with proper article summaries (not Google News which blocks access)
 FEEDS = {
-    "ai": "https://news.google.com/rss/search?q=Artificial+Intelligence&hl=en-US&gl=US&ceid=US:en",
-    "lifestyle": "https://news.google.com/rss/search?q=Lifestyle&hl=en-US&gl=US&ceid=US:en",
-    "world": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx1YlY4U0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en"
+    "ai": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "lifestyle": "https://www.theguardian.com/lifeandstyle/rss",
+    "world": "https://feeds.bbci.co.uk/news/world/rss.xml"
 }
 
 # User-Agent for requests to avoid being blocked

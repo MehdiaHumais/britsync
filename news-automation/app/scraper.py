@@ -23,6 +23,33 @@ def strip_html(text):
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text(separator=" ", strip=True)
 
+def fetch_article_content(url: str) -> str:
+    """Fetches the full article content from the source URL as fallback.
+    Returns HTML with <p> tags."""
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return ""
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "nav", "header", "footer", "aside"]):
+            tag.decompose()
+        # Try to extract from article containers
+        for candidate in soup.select("article, [role=main], .post-content, .article-body, .entry-content, main"):
+            paragraphs = candidate.find_all("p")
+            if len(paragraphs) >= 2:
+                html = "".join(str(p) for p in paragraphs)
+                text_len = len(candidate.get_text(separator=" ", strip=True).split())
+                if text_len > 100:
+                    return html
+        # Fallback: convert text paragraphs to HTML
+        text = soup.get_text(separator="\n", strip=True)
+        lines = [l.strip() for l in text.split("\n") if len(l.strip().split()) > 10]
+        if lines:
+            return "".join(f"<p>{l}</p>" for l in lines[:30])
+        return ""
+    except Exception:
+        return ""
+
 def remove_emojis(text: str) -> str:
     """
     Removes emoji characters to enforce plain professional text.
@@ -106,18 +133,22 @@ def fetch_rss_news(category):
         
         if not final_summary:
              print(" Failed.")
-             # Fallback to original content if AI fails, to avoid skipping everything 429
-             if clean_content and len(clean_content.split()) > 5:
-                 print(f"    - [FALLBACK] Using original RSS content.")
-                 final_summary = clean_content
+             # Try to fetch full content from source URL
+             print(f"    - [FALLBACK] Fetching full article from source...")
+             fetched = fetch_article_content(entry.link)
+             if fetched and len(fetched.split()) > 50:
+                 final_summary = fetched
+             elif raw_summary and len(strip_html(raw_summary).split()) > 10:
+                 print(f"    - [FALLBACK] Using original RSS HTML content.")
+                 final_summary = raw_summary
              else:
-                 print(f"    - [FALLBACK] Content too short, using title as summary.")
+                 print(f"    - [FALLBACK] Using title as summary.")
                  final_summary = clean_title
         else:
              print(" Success.")
         
-        # QUALITY CHECK: Enforce higher threshold to ensure professional layout
-        if not final_summary or len(final_summary.split()) < 50:
+        # QUALITY CHECK: Accept content that's at least 20 words
+        if not final_summary or len(final_summary.split()) < 20:
             print(f"    - [REJECT] Content too short for '{clean_title[:30]}...' ({len(final_summary.split()) if final_summary else 0} words). Waiting for AI Quota to reset.")
             continue
 

@@ -25,6 +25,7 @@ const DocuInvite = require('../models/DocuInvite');
 const DocuSubscription = require('../models/DocuSubscription');
 const DocuUsageCounter = require('../models/DocuUsageCounter');
 const DocuWebForm = require('../models/DocuWebForm');
+const DocuFingerprintDevice = require('../models/DocuFingerprintDevice');
 
 // Services
 const { compileFinalPdfNew, getFilePathFromUrl, calculateHash, generateAuditReportPdf } = require('../services/docuServiceNew');
@@ -1726,6 +1727,22 @@ router.get('/documents/:id', authenticateDocuToken, async (req, res) => {
         const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
         if (!doc) return res.status(404).json({ message: 'Document not found' });
         res.json(doc);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.get('/documents/:id/file', authenticateDocuToken, async (req, res) => {
+    try {
+        const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
+        if (!doc) return res.status(404).json({ message: 'Document not found' });
+        if (!doc.original_file_url) return res.status(404).json({ message: 'File not found' });
+        const filename = doc.original_file_url.split('/uploads/')[1] || doc.original_file_url.split('/').pop();
+        const filePath = path.join(__dirname, '..', 'uploads', filename);
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: 'File not found on disk' });
+        const fileBuffer = fs.readFileSync(filePath);
+        const base64 = fileBuffer.toString('base64');
+        res.json({ success: true, data: base64, filename });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -4027,6 +4044,194 @@ router.post('/public/forms/:slug/submit', async (req, res) => {
         });
 
         res.status(201).json({ message: 'Form submitted successfully!', secure_token: savedDoc.recipients[0].secure_token });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ===== Fingerprint Auth Routes =====
+
+// POST /auth/fingerprint/register - register via fingerprint device
+router.post('/auth/fingerprint/register', async (req, res) => {
+    try {
+        const { device_token, device_name, device_info } = req.body;
+        if (!device_token) {
+            return res.status(400).json({ message: 'Device token is required' });
+        }
+
+        const existing = await DocuFingerprintDevice.findOne({ device_token }).populate('user_id');
+        if (existing) {
+            existing.last_active = new Date();
+            await existing.save();
+            const user = existing.user_id;
+            const member = await DocuWorkspaceMember.findOne({ user_id: user._id, status: 'joined' }).populate('workspace_id');
+            const wsId = member ? member.workspace_id._id : user.default_workspace_id;
+            const token = jwt.sign(
+                { id: user._id, email: user.email, workspaceId: wsId },
+                process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
+                { expiresIn: '7d' }
+            );
+            return res.json({
+                token, user: { id: user._id, full_name: user.full_name, email: user.email, onboarding_completed: user.onboarding_completed },
+                is_new: false, has_backup_credentials: !!user.password_hash
+            });
+        }
+
+        const full_name = device_name || `User-${device_token.slice(-6)}`;
+        const email = `fp_${device_token.slice(-12)}@fingerprint.britsync`;
+        const password_hash = '';
+
+        const newUser = new DocuUser({
+            full_name, email, password_hash,
+            email_verified: true,
+            onboarding_completed: false
+        });
+        const savedUser = await newUser.save();
+
+        const wsCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const workspace = new DocuWorkspace({
+            name: `${full_name}'s Personal Workspace`,
+            owner_id: savedUser._id,
+            workspace_type: 'PERSONAL',
+            workspace_code: wsCode,
+            slug: `ws-${wsCode.toLowerCase()}`,
+            plan: 'free',
+            subscription_status: 'active'
+        });
+        const savedWs = await workspace.save();
+
+        const membership = new DocuWorkspaceMember({
+            workspace_id: savedWs._id,
+            user_id: savedUser._id,
+            role: 'owner',
+            status: 'joined',
+            joined_at: new Date()
+        });
+        await membership.save();
+
+        savedUser.personal_workspace_id = savedWs._id;
+        savedUser.default_workspace_id = savedWs._id;
+        await savedUser.save();
+
+        const fpDevice = new DocuFingerprintDevice({
+            user_id: savedUser._id,
+            device_token,
+            device_name: device_name || '',
+            device_info: device_info || ''
+        });
+        await fpDevice.save();
+
+        const token = jwt.sign(
+            { id: savedUser._id, email: savedUser.email, workspaceId: savedWs._id },
+            process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
+            { expiresIn: '7d' }
+        );
+
+        res.status(201).json({
+            token, user: { id: savedUser._id, full_name: savedUser.full_name, email: savedUser.email, onboarding_completed: false },
+            is_new: true, has_backup_credentials: false
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// POST /auth/fingerprint/login - login via device token
+router.post('/auth/fingerprint/login', async (req, res) => {
+    try {
+        const { device_token } = req.body;
+        if (!device_token) {
+            return res.status(400).json({ message: 'Device token is required' });
+        }
+
+        const fpDevice = await DocuFingerprintDevice.findOne({ device_token }).populate('user_id');
+        if (!fpDevice) {
+            return res.status(401).json({ message: 'Device not recognized. Please sign up first.' });
+        }
+
+        fpDevice.last_active = new Date();
+        await fpDevice.save();
+
+        const user = fpDevice.user_id;
+        if (user.status === 'SUSPENDED') {
+            return res.status(403).json({ message: 'Your account has been suspended.' });
+        }
+
+        let wsId = user.default_workspace_id;
+        let member = null;
+        if (wsId) {
+            member = await DocuWorkspaceMember.findOne({ user_id: user._id, workspace_id: wsId, status: 'joined' }).populate('workspace_id');
+        }
+        if (!member) {
+            member = await DocuWorkspaceMember.findOne({ user_id: user._id, status: 'joined' }).populate('workspace_id');
+        }
+
+        user.last_login_at = new Date();
+        user.last_login_ip = req.ip || req.headers['x-forwarded-for'] || 'Unknown';
+        await user.save();
+
+        const wId = member ? member.workspace_id._id : user.default_workspace_id;
+        const token = jwt.sign(
+            { id: user._id, email: user.email, workspaceId: wId },
+            process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            token, user: { id: user._id, full_name: user.full_name, email: user.email, onboarding_completed: user.onboarding_completed },
+            is_new: false, has_backup_credentials: !!user.password_hash
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// POST /auth/fingerprint/set-password - add email/password backup to fingerprint account
+router.post('/auth/fingerprint/set-password', authenticateDocuToken, async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+        if (password.length < 6) {
+            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        }
+
+        const existingUser = await DocuUser.findOne({ email });
+        if (existingUser && existingUser._id.toString() !== req.user.id) {
+            return res.status(400).json({ message: 'Email already in use by another account' });
+        }
+
+        const user = await DocuUser.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const password_hash = await bcrypt.hash(password, 10);
+        user.email = email;
+        user.password_hash = password_hash;
+        user.full_name = req.body.full_name || user.full_name;
+        await user.save();
+
+        res.json({ success: true, message: 'Backup credentials saved successfully' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// GET /auth/fingerprint/status - check if fingerprint user has backup credentials
+router.get('/auth/fingerprint/status', authenticateDocuToken, async (req, res) => {
+    try {
+        const user = await DocuUser.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        const fpDevice = await DocuFingerprintDevice.findOne({ user_id: user._id });
+        res.json({
+            is_fingerprint_user: !!fpDevice,
+            has_backup_credentials: !!user.password_hash,
+            email: user.email
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

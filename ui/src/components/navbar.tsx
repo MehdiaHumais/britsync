@@ -3,24 +3,10 @@ import { Search, Menu, User, LogOut, ArrowLeft, Globe, Cpu, Sparkles } from "luc
 import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth";
 import { PremiumNav } from "./premium-nav";
-import { prisma } from "@/lib/db";
 
 export async function Navbar() {
     const session = await getSession();
-
-    let settings = null;
-    try {
-        // Safer check for model existence
-        const prismaAny = prisma as any;
-        if (prismaAny.siteSetting) {
-            settings = await prismaAny.siteSetting.findUnique({ where: { id: "global" } });
-        } else {
-            console.error("Prisma siteSetting model not found in client yet.");
-        }
-    } catch (e) {
-        console.error("Catch: Prisma siteSetting access failed.", e);
-    }
-    const breakingNews = settings?.breakingNews || "Global Summit Reaches Historic Agreement on Climate Action • New Space Mission to Mars Announced for 2030 • Tech Giant Unveils Revolutionary AGI Model •";
+    const breakingNews = "Global Summit Reaches Historic Agreement on Climate Action • New Space Mission to Mars Announced for 2030 • Tech Giant Unveils Revolutionary AGI Model •";
 
     return (
         <div className="flex flex-col">

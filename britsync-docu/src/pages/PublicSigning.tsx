@@ -205,7 +205,24 @@ export const PublicSigning: React.FC = () => {
 
                 // Load PDF
                 const pdfjs = await loadPdfJs();
-                const loadedPdf = await pdfjs.getDocument(data.doc.original_file_url).promise;
+                const pdfUrl = data.doc.original_file_url.replace(/^https?:\/\/[^\/]+/, '');
+                console.log('PublicSigning fetching PDF from:', pdfUrl);
+                const pdfResponse = await fetch(pdfUrl);
+                console.log('PDF response:', pdfResponse.status, pdfResponse.statusText);
+                if (!pdfResponse.ok) throw new Error(`HTTP ${pdfResponse.status}: ${pdfResponse.statusText}`);
+                const contentType = pdfResponse.headers.get('content-type') || '';
+                let pdfBuffer: Uint8Array;
+                if (contentType.includes('application/json')) {
+                    const json = await pdfResponse.json();
+                    if (!json.success || !json.data) throw new Error('PDF data missing in API response');
+                    pdfBuffer = Uint8Array.from(atob(json.data), c => c.charCodeAt(0));
+                } else {
+                    const buf = await pdfResponse.arrayBuffer();
+                    pdfBuffer = new Uint8Array(buf);
+                }
+                console.log('PDF buffer size:', pdfBuffer.length);
+                if (!pdfBuffer || pdfBuffer.length === 0) throw new Error('PDF response is empty (0 bytes)');
+                const loadedPdf = await pdfjs.getDocument({ data: pdfBuffer }).promise;
                 setPdfDoc(loadedPdf);
                 setNumPages(loadedPdf.numPages);
                 setPdfLoading(false);
@@ -695,10 +712,9 @@ export const PublicSigning: React.FC = () => {
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f1f5f9' }}>
+        <div className="public-signing-root" style={{ backgroundColor: '#f1f5f9' }}>
             {/* Header */}
-            <div style={{
-                height: '60px',
+            <div className="public-signing-header" style={{
                 background: 'white',
                 borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
@@ -774,7 +790,7 @@ export const PublicSigning: React.FC = () => {
             </div>
 
             {/* Document Signing Workspace */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
+            <div className="public-signing-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
                 {pdfLoading ? (
                     <div style={{ display: 'flex', minHeight: '40vh', alignItems: 'center', justifyContent: 'center' }}>
                         <div className="spinner"></div>
@@ -806,7 +822,7 @@ export const PublicSigning: React.FC = () => {
             {showSigModal && (
                 <div className="modal-overlay" style={{ zIndex: 10000 }}>
                     <div className="modal-container" style={{ maxWidth: '500px' }}>
-                        <div className="modal-header" style={{ paddingBottom: '0.5rem', borderBottom: 'none' }}>
+                        <div style={{ padding: '1.5rem 1.5rem 0.5rem 1.5rem', borderBottom: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <h2>Choose Signature Method</h2>
                             <button className="close-btn" onClick={() => {
                                 setShowSigModal(false);

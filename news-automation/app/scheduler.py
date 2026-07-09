@@ -1,6 +1,7 @@
 import sys
 import os
-# Add the project directory to the python path so we can import 'app'
+import time
+from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import scraper, crud, database, models
@@ -20,17 +21,13 @@ def run_automation():
         new_count = 0
         for article_data in articles:
             if not crud.article_exists(db, article_data["link"]):
-                # Save to local DB
                 crud.create_article(db, article_data)
-                
-                # Publish to website DB (Supabase)
                 print(f"    - Syncing to Website...", end="", flush=True)
                 success = publisher.publish(article_data)
                 if success:
                     print(" Success.")
                 else:
                     print(" Failed (see error above).")
-                
                 new_count += 1
         print(f"  {category}: {len(articles)} fetched, {new_count} new and synced")
 
@@ -38,4 +35,13 @@ def run_automation():
     print("Done.")
 
 if __name__ == "__main__":
+    print("=== News Automation Scheduler ===")
+    print("Running first scrape now...")
     run_automation()
+    while True:
+        next_run = datetime.now() + timedelta(hours=24)
+        print(f"\nNext scrape at: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
+        print("Waiting 24 hours until next run...")
+        time.sleep(86400)
+        print(f"\n=== Running scheduled scrape: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
+        run_automation()

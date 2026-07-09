@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiCall } from '../utils/api';
-import { Mail, Lock, RefreshCw, AlertCircle, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react';
+import { Mail, Lock, RefreshCw, AlertCircle, Eye, EyeOff, ShieldCheck, Sparkles, Fingerprint } from 'lucide-react';
+import { triggerFingerprint, getDeviceToken } from '../utils/fingerprint';
+import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 
 export const Login: React.FC = () => {
     const navigate = useNavigate();
@@ -10,6 +12,8 @@ export const Login: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [fpLoading, setFpLoading] = useState(false);
+    const [showBackupModal, setShowBackupModal] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,10 +36,63 @@ export const Login: React.FC = () => {
         }
     };
 
+    const handleFingerprintLogin = async () => {
+        setFpLoading(true);
+        setError('');
+        try {
+            const deviceToken = await triggerFingerprint();
+            const data = await apiCall('auth/fingerprint/login', {
+                method: 'POST',
+                body: { device_token: deviceToken }
+            });
+            localStorage.setItem('docu_token', data.token);
+            if (!data.has_backup_credentials) {
+                setShowBackupModal(true);
+            } else {
+                navigate('/dashboard');
+            }
+        } catch (err: any) {
+            setError(err.message || 'Fingerprint authentication failed');
+            setFpLoading(false);
+        }
+    };
+
+    const handleFingerprintSignup = async () => {
+        setFpLoading(true);
+        setError('');
+        try {
+            const deviceToken = await triggerFingerprint();
+            const data = await apiCall('auth/fingerprint/register', {
+                method: 'POST',
+                body: { device_token: deviceToken, device_name: '', device_info: navigator.userAgent }
+            });
+            localStorage.setItem('docu_token', data.token);
+            if (data.is_new) {
+                setShowBackupModal(true);
+            } else {
+                navigate('/dashboard');
+            }
+        } catch (err: any) {
+            setError(err.message || 'Fingerprint authentication failed');
+            setFpLoading(false);
+        }
+    };
+
+    const handleBackupComplete = () => {
+        setShowBackupModal(false);
+        navigate('/dashboard');
+    };
+
+    const handleBackupLater = () => {
+        setShowBackupModal(false);
+        navigate('/dashboard');
+    };
+
     return (
-        <div style={{
+        <div className="login-container" style={{
             minHeight: '100vh',
             display: 'flex',
+            flexWrap: 'wrap',
             backgroundColor: '#ffffff',
             fontFamily: '"Inter", sans-serif'
         }}>
@@ -63,7 +120,7 @@ export const Login: React.FC = () => {
                             }} 
                         />
                         <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.5px' }}>
-                            BritSync <span style={{ color: '#2563eb' }}>Docu</span>
+                            BritSync Docu
                         </span>
                     </div>
 
@@ -149,11 +206,49 @@ export const Login: React.FC = () => {
                         </button>
                     </form>
 
-                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2rem', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.25rem 0' }}>
+                        <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>or</span>
+                        <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleFingerprintLogin}
+                        disabled={fpLoading}
+                        style={{
+                            width: '100%', padding: '0.7rem', borderRadius: '8px',
+                            border: '1px solid #e2e8f0', background: 'white',
+                            color: '#0f172a', fontSize: '0.85rem', fontWeight: 700,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center',
+                            justifyContent: 'center', gap: '0.6rem',
+                            transition: 'all 0.15s'
+                        }}
+                        onMouseOver={e => (e.currentTarget.style.borderColor = '#2563eb')}
+                        onMouseOut={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+                    >
+                        {fpLoading ? (
+                            <><RefreshCw size={16} className="spinner" /> Scanning...</>
+                        ) : (
+                            <><Fingerprint size={18} style={{ color: '#2563eb' }} /> Sign in with Fingerprint</>
+                        )}
+                    </button>
+
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.5rem' }}>
+                        New device? <button type="button" onClick={handleFingerprintSignup} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', padding: 0, textDecoration: 'underline' }} disabled={fpLoading}>Register with Fingerprint</button>
+                    </p>
+
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '1.5rem', textAlign: 'center' }}>
                         New to BritSync Docu? <Link to="/signup" style={{ color: '#2563eb', fontWeight: 700 }}>Create an account</Link>
                     </p>
                 </div>
             </div>
+
+            <BackupCredentialsModal
+                open={showBackupModal}
+                onClose={handleBackupLater}
+                onComplete={handleBackupComplete}
+            />
 
             {/* Right Column: Visual Features Dashboard Panel */}
             <div style={{

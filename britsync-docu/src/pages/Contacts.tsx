@@ -222,12 +222,12 @@ export const Contacts: React.FC = () => {
 
     return (
         <DashboardLayout title="Contacts">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+            <div className="contacts-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <div>
                     <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.5px' }}>Contacts Directory</h2>
                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.15rem' }}>Organize signers, clients, and partners to quickly populate document dispatches.</p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div className="contacts-actions" style={{ display: 'flex', gap: '0.5rem' }}>
                     <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
                         <Upload size={16} /> Import CSV
                     </button>

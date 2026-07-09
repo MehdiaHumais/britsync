@@ -121,7 +121,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                         }} 
                     />
                     <span className="logo-text" style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--foreground)', letterSpacing: '-0.5px' }}>
-                        BritSync <span className="logo-span" style={{ color: 'var(--primary)' }}>Docu</span>
+                        BritSync Docu
                     </span>
                 </div>
                 
@@ -184,10 +184,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
             <div className="main-content">
                 {/* Header */}
                 <header className="header">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <button 
-                            className="btn-icon" 
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', display: 'none' }}
+                            className="mobile-hamburger" 
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                         >
                             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -195,7 +194,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <h1 style={{ margin: 0 }}>{title}</h1>
                             {workspace && (
-                                <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <div className="workspace-switcher-wrapper" style={{ position: 'relative', display: 'inline-block', maxWidth: '160px' }}>
                                     <button 
                                         className="workspace-switcher-btn"
                                         style={{ 
@@ -210,11 +209,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                                             alignItems: 'center',
                                             gap: '6px',
                                             color: '#1e293b',
-                                            transition: 'all 0.2s'
+                                            transition: 'all 0.2s',
+                                            maxWidth: '100%',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap'
                                         }}
                                         onClick={() => setShowSwitcher(!showSwitcher)}
                                     >
-                                        🏢 {workspace.name} ▾
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🏢 {workspace.name}</span> ▾
                                     </button>
                                     
                                     {showSwitcher && (
@@ -311,7 +314,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                         </div>
                     </div>
 
-                    <div className="user-profile-menu">
+                    <div className="user-profile-menu" style={{ flexShrink: 0 }}>
                         {/* Notifications Bell */}
                         <div style={{ position: 'relative' }}>
                             <button 
@@ -340,7 +343,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, titl
                             </button>
 
                             {showNotifications && (
-                                <div style={{
+                                <div className="notification-dropdown" style={{
                                     position: 'absolute',
                                     right: 0,
                                     top: '35px',

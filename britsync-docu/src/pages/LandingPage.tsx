@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     PenTool, FileText, CheckCircle2, ArrowRight, Layers, Users, Zap, 
@@ -6,10 +6,55 @@ import {
     Grid as GridIcon, Compass, Sparkle
 } from 'lucide-react';
 import AnimatedSignatureHero from '../components/ui/AnimatedSignatureHero';
+import apiCall from '../utils/api';
 
 export const LandingPage: React.FC = () => {
     const navigate = useNavigate();
     const [selectedTemplateCat, setSelectedTemplateCat] = useState('legal');
+    const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const [menuOpen, setMenuOpen] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem('docu_token');
+        if (!token) { setLoading(false); return; }
+        apiCall('auth/me')
+            .then((res: any) => {
+                if (res?.user) setUser(res.user);
+            })
+            .catch(() => localStorage.removeItem('docu_token'))
+            .finally(() => setLoading(false));
+    }, []);
+
+    useEffect(() => {
+        const onResize = () => setWidth(window.innerWidth);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+
+    const isMobile = width <= 768;
+    const isSmall = width <= 480;
+    const userInitial = user?.name
+        ? user.name.charAt(0).toUpperCase()
+        : user?.email
+        ? user.email.charAt(0).toUpperCase()
+        : null;
+
+    const navLinkStyle = {
+        fontSize: '0.9rem', color: '#475569', fontWeight: 600, textDecoration: 'none',
+        transition: 'color 0.2s', cursor: 'pointer'
+    } as const;
+
+    const btnPrimary = {
+        padding: '0.55rem 1.5rem', fontSize: '0.85rem', borderRadius: '8px', fontWeight: 700,
+        background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: '#fff', border: 'none', cursor: 'pointer'
+    } as const;
+
+    const btnSecondary = {
+        padding: '0.55rem 1.25rem', fontSize: '0.85rem', borderRadius: '8px', fontWeight: 700,
+        background: 'transparent', color: '#475569', border: '1px solid #e2e8f0', cursor: 'pointer'
+    } as const;
 
     const workflowSteps = [
         {
@@ -47,59 +92,96 @@ export const LandingPage: React.FC = () => {
     return (
         <div style={{ backgroundColor: '#fafbfd', minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: '"Inter", sans-serif', overflowX: 'hidden' }}>
             {/* Landing Navbar */}
-            <nav style={{
-                height: '75px',
+            <nav className="landing-nav" style={{
+                height: isMobile ? 'auto' : '75px',
+                minHeight: '65px',
                 background: 'rgba(255, 255, 255, 0.8)',
                 backdropFilter: 'blur(12px)',
                 borderBottom: '1px solid #e2e8f0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '0 3.5rem',
+                padding: isMobile ? '0 1rem' : '0 3.5rem',
                 position: 'sticky',
                 top: 0,
                 zIndex: 100,
-                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.02)'
+                boxShadow: '0 4px 30px rgba(0, 0, 0, 0.02)',
+                flexWrap: 'wrap'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => navigate('/docu')}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', height: '65px' }} onClick={() => navigate('/docu')}>
                     <img 
                         src={`${import.meta.env.BASE_URL}logo.png`}
                         alt="BritSync Logo" 
-                        style={{ 
-                            width: '38px', 
-                            height: '38px', 
-                            borderRadius: '10px', 
-                            objectFit: 'cover',
-                            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)'
-                        }} 
+                        style={{ width: '34px', height: '34px', borderRadius: '10px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.15)' }}
                     />
-                    <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.6px' }}>
+                    <span style={{ fontSize: isMobile ? '1.1rem' : '1.3rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-0.6px' }}>
                         BritSync <span style={{ color: '#2563eb' }}>Docu</span>
                     </span>
                 </div>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
-                    <a href="#features" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600, textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#2563eb'} onMouseLeave={e => e.currentTarget.style.color = '#475569'}>Features</a>
-                    <a href="#preview" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600, textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#2563eb'} onMouseLeave={e => e.currentTarget.style.color = '#475569'}>Product Tour</a>
-                    <a href="#security" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600, textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#2563eb'} onMouseLeave={e => e.currentTarget.style.color = '#475569'}>Security</a>
-                    <a href="#pricing" style={{ fontSize: '0.9rem', color: '#475569', fontWeight: 600, textDecoration: 'none', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#2563eb'} onMouseLeave={e => e.currentTarget.style.color = '#475569'}>Pricing</a>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: '1rem' }}>
-                        <button className="btn btn-secondary" style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem', borderRadius: '8px', fontWeight: 700 }} onClick={() => navigate('/login')}>Login</button>
-                        <button className="btn btn-primary" style={{ padding: '0.55rem 1.5rem', fontSize: '0.85rem', borderRadius: '8px', fontWeight: 700, background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }} onClick={() => navigate('/signup')}>Get Started</button>
+                {isMobile ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {user ? (
+                            <button style={btnPrimary} onClick={() => navigate('/dashboard')}>Dashboard</button>
+                        ) : (
+                            <button style={btnSecondary} onClick={() => navigate('/login')}>Login</button>
+                        )}
+                        <button style={{ ...btnSecondary, padding: '0.5rem', border: 'none' }} onClick={() => setMenuOpen(!menuOpen)}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        </button>
                     </div>
-                </div>
+                ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
+                        <a href="#features" style={navLinkStyle}>Features</a>
+                        <a href="#preview" style={navLinkStyle}>Product Tour</a>
+                        <a href="#security" style={navLinkStyle}>Security</a>
+                        <a href="#pricing" style={navLinkStyle}>Pricing</a>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: '1rem' }}>
+                            {user ? (
+                                <>
+                                    <button style={btnPrimary} onClick={() => navigate('/dashboard')}>Dashboard</button>
+                                    <div style={{
+                                        width: '38px', height: '38px', borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '1rem', fontWeight: 700, cursor: 'pointer',
+                                        boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                                    }} onClick={() => navigate('/dashboard')} title={user.name || user.email}>
+                                        {userInitial}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <button style={btnSecondary} onClick={() => navigate('/login')}>Login</button>
+                                    <button style={btnPrimary} onClick={() => navigate('/signup')}>Get Started</button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {isMobile && menuOpen && (
+                    <div style={{
+                        width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem',
+                        padding: '0.75rem 0 1rem', borderTop: '1px solid #e2e8f0', marginTop: '0.25rem'
+                    }}>
+                        <a href="#features" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Features</a>
+                        <a href="#preview" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Product Tour</a>
+                        <a href="#security" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Security</a>
+                        <a href="#pricing" style={navLinkStyle} onClick={() => setMenuOpen(false)}>Pricing</a>
+                        {!user && <button style={btnPrimary} onClick={() => { setMenuOpen(false); navigate('/signup'); }}>Get Started</button>}
+                    </div>
+                )}
             </nav>
 
             {/* Split Hero Section with premium Grid background */}
-            <section style={{ 
-                padding: '7rem 3.5rem 6.5rem 3.5rem', 
+            <section className="landing-hero" style={{ 
+                padding: isMobile ? '4rem 1.5rem 4rem' : isSmall ? '3rem 1rem 3rem' : '7rem 3.5rem 6.5rem 3.5rem', 
                 maxWidth: '1280px', 
                 margin: '0 auto', 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'space-between',
-                gap: '5rem',
+                gap: isMobile ? '2.5rem' : '5rem',
                 flexWrap: 'wrap',
                 position: 'relative'
             }}>
@@ -120,7 +202,7 @@ export const LandingPage: React.FC = () => {
                 {/* Hero Text */}
                 <div style={{ flex: 1.2, minWidth: '320px', textAlign: 'left' }}>
                     {/* Badge removed */}
-                    <h1 style={{ fontSize: '3.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: '-1.8px', lineHeight: 1.1, marginBottom: '1.5rem' }}>
+                    <h1 style={{ fontSize: isMobile ? '2.2rem' : isSmall ? '1.8rem' : '3.5rem', fontWeight: 900, color: '#0f172a', letterSpacing: isMobile ? '-1px' : '-1.8px', lineHeight: 1.1, marginBottom: '1.5rem' }}>
                         Send, sign, and manage documents <span style={{ background: 'linear-gradient(135deg, #2563eb, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>digitally in minutes.</span>
                     </h1>
                     <p style={{ fontSize: '1.15rem', color: '#475569', lineHeight: 1.6, marginBottom: '2.5rem', maxWidth: '540px' }}>
@@ -142,7 +224,7 @@ export const LandingPage: React.FC = () => {
                     </div>
 
                     {/* Trust Metrics Underneath */}
-                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
+                    <div className="landing-trust-metrics" style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', borderTop: '1px solid #e2e8f0', paddingTop: '1.5rem' }}>
                         {[
                             { title: '2-min setup', desc: 'No complex API integration required.' },
                             { title: 'SHA-256 secure', desc: 'Protected by cryptographic hash logs.' },
@@ -170,10 +252,10 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 1: Trusted Workflow Strip */}
-            <div style={{ borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '3.5rem 1.5rem', textAlign: 'center' }}>
+            <div className="landing-section" style={{ borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', backgroundColor: 'white', padding: '3.5rem 1.5rem', textAlign: 'center' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '1.5px', display: 'block', marginBottom: '2.5rem' }}>E-Signature Workflow in 4 Simple Stages</span>
                 
-                <div style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2.5rem', position: 'relative' }}>
+                <div className="workflow-steps-grid" style={{ maxWidth: '1100px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '2.5rem', position: 'relative' }}>
                     {[
                         { title: '1. Upload PDF File', desc: 'Drop contracts or legal agreements safely in your secure database storage.', icon: <FileText size={20} /> },
                         { title: '2. Prepare Smart Fields', desc: 'Place dropdown selection sets, signature inputs, dates, and validation logic.', icon: <Layers size={20} /> },
@@ -217,7 +299,7 @@ export const LandingPage: React.FC = () => {
             </div>
 
             {/* Section 2: High Fidelity Product Preview Mockup */}
-            <section id="preview" style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc' }}>
+            <section id="preview" className="landing-section" style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#2563eb', background: '#eff6ff', padding: '0.35rem 0.85rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '1rem' }}>
                         <Compass size={12} /> Product Walkthrough
@@ -226,7 +308,7 @@ export const LandingPage: React.FC = () => {
                     <p style={{ color: '#64748b', fontSize: '1rem', marginBottom: '4rem', maxWidth: '600px', margin: '0 auto 4rem auto' }}>Oversee documents statuses, track signing pipelines, and manage templates within a single centralized page.</p>
 
                     {/* Glassmorphic Browser Mockup Frame */}
-                    <div style={{
+                    <div className="landing-mockup" style={{
                         background: '#ffffff',
                         border: '1px solid #e2e8f0',
                         borderRadius: '20px',
@@ -266,7 +348,7 @@ export const LandingPage: React.FC = () => {
                         </div>
 
                         {/* Inside Frame Workspace */}
-                        <div style={{ display: 'flex', height: '480px', textAlign: 'left' }}>
+                        <div className="landing-mockup-frame" style={{ display: 'flex', height: '480px', textAlign: 'left' }}>
                             {/* Left Side Navigation bar */}
                             <div style={{ width: '180px', borderRight: '1px solid #e2e8f0', background: '#f8fafc', padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                                 <div style={{ height: '8px', background: '#e2e8f0', width: '60%', borderRadius: '4px', marginBottom: '1rem', marginLeft: '0.5rem' }} />
@@ -365,7 +447,7 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 3: Feature Grid */}
-            <section id="features" style={{ padding: '7rem 2.5rem', backgroundColor: '#ffffff' }}>
+            <section id="features" className="landing-section" style={{ padding: '7rem 2.5rem', backgroundColor: '#ffffff' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#2563eb', background: '#eff6ff', padding: '0.35rem 0.85rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '1rem' }}>
                         <Sparkle size={12} /> Robust Features
@@ -373,7 +455,7 @@ export const LandingPage: React.FC = () => {
                     <h2 style={{ fontSize: '2.5rem', fontWeight: 900, marginBottom: '0.5rem', color: '#0f172a', letterSpacing: '-1px' }}>Everything You Need To Secure Deals</h2>
                     <p style={{ color: '#64748b', fontSize: '1rem', marginBottom: '4.5rem', maxWidth: '600px', margin: '0 auto 4.5rem auto' }}>Scale your operational agility with digital signatures built for modern business contracts.</p>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.75rem' }}>
+                    <div className="landing-features-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.75rem' }}>
                         {[
                             { title: 'Interactive Field Toolbox', desc: 'Place text, signatures, dropdowns, checkboxes, dates, and initials. Customize layouts effortlessly.', icon: <Layers size={20} /> },
                             { title: 'Handdrawn & Typed Signatures', desc: 'Signers can draw freehand signatures, choose stylized typing fonts, or upload images.', icon: <PenTool size={20} /> },
@@ -416,7 +498,7 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 4: Stepper Flow */}
-            <section style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+            <section className="landing-section" style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                 <div style={{ maxWidth: '1000px', margin: '0 auto', textAlign: 'center' }}>
                     <h2 style={{ fontSize: '2.5rem', fontWeight: 900, marginBottom: '0.5rem', color: '#0f172a', letterSpacing: '-1px' }}>Signature Lifecycle Stages</h2>
                     <p style={{ color: '#64748b', fontSize: '1rem', marginBottom: '4.5rem' }}>Automate documents from creation drafts to locked PDFs in 4 stages.</p>
@@ -460,7 +542,7 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 5: Security and Cryptographic Audit - Navy dark layout card */}
-            <section id="security" style={{ padding: '7.5rem 2.5rem', backgroundColor: '#0f172a', color: 'white', position: 'relative', overflow: 'hidden' }}>
+            <section id="security" className="landing-section landing-security" style={{ padding: '7.5rem 2.5rem', backgroundColor: '#0f172a', color: 'white', position: 'relative', overflow: 'hidden' }}>
                 <div style={{
                     position: 'absolute',
                     width: '350px',
@@ -531,7 +613,7 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 6: Template Gallery Section */}
-            <section style={{ padding: '7rem 2.5rem', backgroundColor: '#ffffff' }}>
+            <section className="landing-section" style={{ padding: '7rem 2.5rem', backgroundColor: '#ffffff' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#2563eb', background: '#eff6ff', padding: '0.35rem 0.85rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 700, marginBottom: '1rem' }}>
                         <GridIcon size={12} /> Ready-Made Layouts
@@ -540,7 +622,7 @@ export const LandingPage: React.FC = () => {
                     <p style={{ color: '#64748b', fontSize: '1rem', marginBottom: '3.5rem' }}>Select standard models to send deal terms in seconds.</p>
 
                     {/* Selector tabs */}
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
+                    <div className="landing-template-categories" style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
                         {[
                             { id: 'legal', label: 'Legal & Compliance' },
                             { id: 'hr', label: 'Human Resources' },
@@ -601,12 +683,12 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Pricing Section */}
-            <section id="pricing" style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+            <section id="pricing" className="landing-section" style={{ padding: '7rem 2.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
                 <div style={{ maxWidth: '1000px', margin: '0 auto', textAlign: 'center' }}>
                     <h2 style={{ fontSize: '2.5rem', fontWeight: 900, marginBottom: '0.5rem', color: '#0f172a', letterSpacing: '-1px' }}>Simple, Transparent Pricing Plans</h2>
                     <p style={{ color: '#64748b', fontSize: '1.05rem', marginBottom: '4.5rem' }}>Select the plan that fits your business signing scale.</p>
                     
-                    <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <div className="landing-pricing" style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                         {[
                             { name: 'Starter Plan', price: '0', desc: 'For individuals and testing', features: ['3 documents per month', 'Single signer placement', 'Basic Audit Trail', 'Email support'] },
                             { name: 'Professional Plan', price: '19', desc: 'For growing freelancers and teams', features: ['Unlimited documents', 'Multiple recipients', 'Sequential signing order', 'Reusable templates', 'Priority support'], recommended: true },
@@ -664,7 +746,7 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Section 7: Final CTA */}
-            <section style={{ padding: '6.5rem 2rem', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', textAlign: 'center' }}>
+            <section className="landing-cta landing-section" style={{ padding: '6.5rem 2rem', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', textAlign: 'center' }}>
                 <div style={{ maxWidth: '800px', margin: '0 auto' }}>
                     <h2 style={{ fontSize: '2.5rem', fontWeight: 900, letterSpacing: '-1px', marginBottom: '1.25rem' }}>Ready to replace printing and scanning?</h2>
                     <p style={{ color: '#bfdbfe', fontSize: '1.1rem', marginBottom: '2.5rem', lineHeight: 1.5 }}>
@@ -682,10 +764,10 @@ export const LandingPage: React.FC = () => {
             </section>
 
             {/* Footer */}
-            <footer style={{
+            <footer className="landing-footer" style={{
                 background: 'white',
                 borderTop: '1px solid #e2e8f0',
-                padding: '3rem 3.5rem',
+                padding: isMobile ? '2rem 1.5rem' : '3rem 3.5rem',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',

@@ -211,7 +211,7 @@ export const AnimatedSignatureHero: React.FC = () => {
     const dashOffset = pathLength > 0 ? pathLength * (1 - drawProgress) : 1000;
 
     return (
-        <div style={{
+        <div className="animated-signature-root" style={{
             position: 'relative',
             width: '100%',
             maxWidth: '460px',
@@ -230,7 +230,7 @@ export const AnimatedSignatureHero: React.FC = () => {
             }} />
 
             {/* Document card */}
-            <div style={{
+            <div className="animated-signature-card" style={{
                 background: 'rgba(255,255,255,0.8)',
                 backdropFilter: 'blur(16px)',
                 border: '1px solid rgba(226,232,240,0.8)',
