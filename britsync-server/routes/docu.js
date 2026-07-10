@@ -386,9 +386,10 @@ const checkFeatureGate = (feature) => {
                 });
             }
             next();
-        } catch (err) {
-            res.status(500).json({ message: err.message });
-        }
+    } catch (err) {
+        console.error('Fingerprint login error:', err);
+        res.status(500).json({ message: 'Fingerprint login failed. Please try again.' });
+    }
     }];
 };
 
@@ -4073,13 +4074,13 @@ router.post('/auth/fingerprint/register', async (req, res) => {
             );
             return res.json({
                 token, user: { id: user._id, full_name: user.full_name, email: user.email, onboarding_completed: user.onboarding_completed },
-                is_new: false, has_backup_credentials: !!user.password_hash
+                is_new: false, has_backup_credentials: user.password_hash && user.password_hash !== 'fingerprint_auth_only'
             });
         }
 
         const full_name = device_name || `User-${device_token.slice(-6)}`;
         const email = `fp_${device_token.slice(-12)}@fingerprint.britsync`;
-        const password_hash = '';
+        const password_hash = 'fingerprint_auth_only';
 
         const newUser = new DocuUser({
             full_name, email, password_hash,
@@ -4132,7 +4133,8 @@ router.post('/auth/fingerprint/register', async (req, res) => {
             is_new: true, has_backup_credentials: false
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error('Fingerprint register error:', err);
+        res.status(500).json({ message: 'Registration failed. Please try again.' });
     }
 });
 
@@ -4179,7 +4181,7 @@ router.post('/auth/fingerprint/login', async (req, res) => {
 
         res.json({
             token, user: { id: user._id, full_name: user.full_name, email: user.email, onboarding_completed: user.onboarding_completed },
-            is_new: false, has_backup_credentials: !!user.password_hash
+            is_new: false, has_backup_credentials: user.password_hash && user.password_hash !== 'fingerprint_auth_only'
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -4213,7 +4215,30 @@ router.post('/auth/fingerprint/set-password', authenticateDocuToken, async (req,
         user.full_name = req.body.full_name || user.full_name;
         await user.save();
 
-        res.json({ success: true, message: 'Backup credentials saved successfully' });
+        // Update workspace name if it was the auto-generated one
+        if (user.personal_workspace_id) {
+            const ws = await DocuWorkspace.findById(user.personal_workspace_id);
+            if (ws && ws.name.startsWith('User-')) {
+                ws.name = `${user.full_name}'s Personal Workspace`;
+                await ws.save();
+            }
+        }
+
+        // Return new token with updated info
+        const member = await DocuWorkspaceMember.findOne({ user_id: user._id, status: 'joined' }).populate('workspace_id');
+        const wsId = member ? member.workspace_id._id : user.default_workspace_id;
+        const newToken = jwt.sign(
+            { id: user._id, email: user.email, workspaceId: wsId },
+            process.env.JWT_SECRET || 'Britsync@JWT_92x!KpZ#2025',
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            success: true,
+            message: 'Backup credentials saved successfully',
+            token: newToken,
+            user: { id: user._id, full_name: user.full_name, email: user.email }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -4229,7 +4254,7 @@ router.get('/auth/fingerprint/status', authenticateDocuToken, async (req, res) =
         const fpDevice = await DocuFingerprintDevice.findOne({ user_id: user._id });
         res.json({
             is_fingerprint_user: !!fpDevice,
-            has_backup_credentials: !!user.password_hash,
+            has_backup_credentials: user.password_hash && user.password_hash !== 'fingerprint_auth_only',
             email: user.email
         });
     } catch (err) {

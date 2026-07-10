@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiCall } from '../utils/api';
 import { Mail, Lock, RefreshCw, AlertCircle, Eye, EyeOff, ShieldCheck, Sparkles, Fingerprint } from 'lucide-react';
-import { triggerFingerprint, getDeviceToken } from '../utils/fingerprint';
+import { triggerFingerprint } from '../utils/fingerprint';
 import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 
 export const Login: React.FC = () => {
     const navigate = useNavigate();
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -89,21 +96,24 @@ export const Login: React.FC = () => {
     };
 
     return (
-        <div className="login-container" style={{
+        <div style={{
+            width: '100%',
             minHeight: '100vh',
-            display: 'flex',
-            flexWrap: 'wrap',
             backgroundColor: '#ffffff',
             fontFamily: '"Inter", sans-serif'
         }}>
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                minHeight: '100vh',
+                width: '100%'
+            }} className="login-grid">
             {/* Left Column: Form Card */}
             <div style={{
-                flex: 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '3rem 2rem',
-                zIndex: 10
+                padding: '3rem 2rem'
             }}>
                 <div style={{ width: '100%', maxWidth: '420px', textAlign: 'left' }}>
                     {/* Logo */}
@@ -206,6 +216,7 @@ export const Login: React.FC = () => {
                         </button>
                     </form>
 
+                    {isMobile && (<>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.25rem 0' }}>
                         <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
                         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>or</span>
@@ -235,8 +246,9 @@ export const Login: React.FC = () => {
                     </button>
 
                     <p style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'center', marginTop: '0.5rem' }}>
-                        New device? <button type="button" onClick={handleFingerprintSignup} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', padding: 0, textDecoration: 'underline' }} disabled={fpLoading}>Register with Fingerprint</button>
+                        New device? <button type="button" onClick={handleFingerprintSignup} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', padding: 0, textDecoration: 'underline' }}                         disabled={fpLoading}>Register with Fingerprint</button>
                     </p>
+                    </>)}
 
                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '1.5rem', textAlign: 'center' }}>
                         New to BritSync Docu? <Link to="/signup" style={{ color: '#2563eb', fontWeight: 700 }}>Create an account</Link>
@@ -252,7 +264,6 @@ export const Login: React.FC = () => {
 
             {/* Right Column: Visual Features Dashboard Panel */}
             <div style={{
-                flex: 1,
                 background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
                 color: 'white',
                 display: 'flex',
@@ -366,6 +377,7 @@ export const Login: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            </div>
             </div>
         </div>
     );

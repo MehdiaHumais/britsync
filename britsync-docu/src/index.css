@@ -1215,24 +1215,40 @@ html {
 }
 
 /* Auth pages (Login / Signup) responsive */
+@media (max-width: 1024px) {
+  .login-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
 @media (max-width: 768px) {
   .login-container,
   .auth-container {
     padding: 0 !important;
   }
   .login-container > div:first-child,
-  .auth-container > div:first-child {
+  .auth-container > div:first-child,
+  .login-grid > div:first-child {
     padding: 2rem 1.25rem !important;
+  }
+  .login-container > div:first-child > div,
+  .auth-container > div:first-child > div,
+  .login-grid > div:first-child > div {
+    max-width: 100% !important;
   }
   .auth-container > div {
     flex: 0 0 100% !important;
   }
+  .login-container > div {
+    flex: 0 0 100% !important;
+  }
   .login-container h2,
-  .auth-container h2 {
+  .auth-container h2,
+  .login-grid h2 {
     font-size: 1.4rem !important;
   }
   .login-container .form-input,
-  .auth-container .form-input {
+  .auth-container .form-input,
+  .login-grid .form-input {
     height: 40px !important;
     font-size: 0.85rem !important;
   }
@@ -1240,21 +1256,25 @@ html {
 
 @media (max-width: 480px) {
   .login-container > div:first-child,
-  .auth-container > div:first-child {
+  .auth-container > div:first-child,
+  .login-grid > div:first-child {
     padding: 1.5rem 1rem !important;
   }
   .login-container h2,
-  .auth-container h2 {
+  .auth-container h2,
+  .login-grid h2 {
     font-size: 1.2rem !important;
   }
   .login-container .form-input,
-  .auth-container .form-input {
+  .auth-container .form-input,
+  .login-grid .form-input {
     height: 38px !important;
     font-size: 0.8rem !important;
     padding-left: 2.2rem !important;
   }
   .login-container .btn,
-  .auth-container .btn {
+  .auth-container .btn,
+  .login-grid .btn {
     height: 40px !important;
     font-size: 0.85rem !important;
   }

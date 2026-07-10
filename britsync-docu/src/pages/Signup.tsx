@@ -2,11 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiCall } from '../utils/api';
 import { Mail, Lock, User, RefreshCw, AlertCircle, Eye, EyeOff, Check, Fingerprint } from 'lucide-react';
-import { triggerFingerprint, getDeviceToken } from '../utils/fingerprint';
+import { triggerFingerprint } from '../utils/fingerprint';
 import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 
 export const Signup: React.FC = () => {
     const navigate = useNavigate();
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -238,6 +245,7 @@ export const Signup: React.FC = () => {
                         </button>
                     </form>
 
+                    {isMobile && (<>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.25rem 0' }}>
                         <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }} />
                         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>or</span>
@@ -265,6 +273,7 @@ export const Signup: React.FC = () => {
                             <><Fingerprint size={18} style={{ color: '#2563eb' }} /> Continue with Fingerprint</>
                         )}
                     </button>
+                    </>)}
 
                     <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '1.5rem', textAlign: 'center' }}>
                         Already have an account? <Link to="/login" style={{ color: '#2563eb', fontWeight: 700 }}>Sign in</Link>

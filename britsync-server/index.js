@@ -248,24 +248,25 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
   });
 });
 
-// Connect to MongoDB
+// Connect to MongoDB, then start server
 mongoose.connect(process.env.MONGODB_URI, {
   connectTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  tlsAllowInvalidCertificates: true,
-  tlsAllowInvalidHostnames: true
+  socketTimeoutMS: 45000
 })
   .then(() => {
     console.log('MongoDB Connected successfully');
     console.log('Database:', mongoose.connection.db.databaseName);
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   })
   .catch(err => {
     console.error('MongoDB Connection Error:', err.message);
     console.error('Make sure MongoDB is running locally or update MONGODB_URI in .env');
-    // Don't exit, let the server run without database for testing
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT} (without database)`);
+    });
   });
-
-// --- WHATSAPP HELPER ---
 const sendWhatsAppNotification = async (phoneNumber, userName, viewLink) => {
   const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = process.env;
 
@@ -1582,8 +1583,4 @@ app.use('/api/docu', docuRouter);
 const superAdminRouter = require('./routes/superAdmin');
 app.use('/api/docu/super-admin', superAdminRouter);
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
 

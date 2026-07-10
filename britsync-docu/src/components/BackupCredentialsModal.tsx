@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { RefreshCw, AlertCircle, Mail, Lock, X } from 'lucide-react';
+import { RefreshCw, AlertCircle, Mail, Lock, X, User } from 'lucide-react';
 import { apiCall } from '../utils/api';
 
 interface Props {
@@ -35,10 +35,13 @@ export const BackupCredentialsModal: React.FC<Props> = ({ open, onClose, onCompl
         setLoading(true);
         setError('');
         try {
-            await apiCall('auth/fingerprint/set-password', {
+            const data = await apiCall('auth/fingerprint/set-password', {
                 method: 'POST',
                 body: { email, password, full_name: fullName }
             });
+            if (data.token) {
+                localStorage.setItem('docu_token', data.token);
+            }
             onComplete();
         } catch (err: any) {
             setError(err.message || 'Failed to save credentials');

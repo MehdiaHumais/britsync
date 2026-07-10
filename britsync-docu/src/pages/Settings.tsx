@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiCall } from '../utils/api';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import UpgradeModal from '../components/ui/UpgradeModal';
-import { Save, RefreshCw, Link2, Trash2, Server, Terminal, X, Fingerprint, Mail, Lock, Check, AlertCircle } from 'lucide-react';
+import { Save, RefreshCw, Link2, Trash2, Server, Terminal, X, Fingerprint, Check } from 'lucide-react';
 import { Select } from '../components/ui/Select';
 import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 

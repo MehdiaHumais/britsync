@@ -12,19 +12,17 @@ export const LandingPage: React.FC = () => {
     const navigate = useNavigate();
     const [selectedTemplateCat, setSelectedTemplateCat] = useState('legal');
     const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
-    const [loading, setLoading] = useState(true);
     const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
     const [menuOpen, setMenuOpen] = useState(false);
 
     useEffect(() => {
         const token = localStorage.getItem('docu_token');
-        if (!token) { setLoading(false); return; }
+        if (!token) return;
         apiCall('auth/me')
             .then((res: any) => {
                 if (res?.user) setUser(res.user);
             })
-            .catch(() => localStorage.removeItem('docu_token'))
-            .finally(() => setLoading(false));
+            .catch(() => localStorage.removeItem('docu_token'));
     }, []);
 
     useEffect(() => {
