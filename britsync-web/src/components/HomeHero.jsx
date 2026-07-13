@@ -10,7 +10,7 @@ import './HomeHero.css';
 
 const HomeHero = () => {
     const title = "Build Smarter\nDigital Systems.";
-    const subtitle = "We create high-performance websites, scalable web applications, AI-powered workflows, and automation systems that help modern businesses launch faster and operate smarter.";
+    const subtitle = "We create high-performance websites, scalable web applications, and digital platforms that help modern businesses launch faster and operate smarter.";
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -52,12 +52,6 @@ const HomeHero = () => {
                         initial="hidden"
                         animate="visible"
                     >
-                        {/* Micro badge */}
-                        <motion.div className="hero-micro-badge" variants={itemVariants}>
-                            <span className="badge-glow-dot" />
-                            <span className="badge-text">AI • AUTOMATION • DIGITAL PRODUCTS</span>
-                        </motion.div>
-
                         {/* Title Headline */}
                         <motion.div className="hero-headline-wrap" variants={itemVariants}>
                             <TypewriterReveal text={title} className="hero-headline-text" delay={0.4} align="left" />
@@ -84,7 +78,7 @@ const HomeHero = () => {
 
                         {/* Trust line */}
                         <motion.div className="hero-trust-tag monospace" variants={itemVariants}>
-                            <span>//</span> Trusted for modern web, automation, AI, and digital product development.
+                            <span>//</span> Trusted for modern web and digital product development.
                         </motion.div>
                     </motion.div>
 

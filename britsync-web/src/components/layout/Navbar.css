@@ -34,13 +34,13 @@
 }
 
 .navbar.scrolled .logo-img {
-    width: 80px;
-    height: 80px;
+    height: 45px;
+    width: auto;
 }
 
 .navbar.scrolled .logo-text {
     font-size: 1rem;
-    margin-left: -15px;
+    margin-left: 0.5rem;
 }
 
 .nav-container {
@@ -60,8 +60,9 @@
 }
 
 .logo-img {
-    width: 180px;
-    height: 180px;
+    height: 75px;
+    width: auto;
+    object-fit: contain;
     transition: transform 0.3s ease;
 }
 
@@ -74,7 +75,7 @@
     font-weight: 800;
     letter-spacing: 0.1em;
     color: var(--text-main);
-    margin-left: -42px;
+    margin-left: 0.5rem;
 }
 
 .nav-menu-desktop {

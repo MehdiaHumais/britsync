@@ -10,12 +10,11 @@ import './Navbar.css';
 const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Services', path: '/services' },
-    // { name: 'Work', path: '/work' },
-    { name: 'News', path: '/main/news/' },
-    { name: 'About', path: '/about' },
     { name: 'Store', path: 'https://store.britsyncai.com/' },
+    { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
-    { name: 'BritSync Docu', path: window.location.hostname === 'localhost' ? 'http://localhost:5173' : 'https://britsync-docu.britsync.co.uk' }
+    { name: 'BritSync Docu', path: window.location.hostname === 'localhost' ? 'http://localhost:5173' : 'https://britsync-docu.britsync.co.uk' },
+    { name: 'News', path: '/main/news/' }
 ];
 
 const Navbar = () => {
@@ -37,7 +36,7 @@ const Navbar = () => {
         <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
             <div className="nav-container">
                 <Link to="/" className="nav-logo">
-                    <img src="/vite.svg" alt="Vite Logo" className="logo-img" />
+                    <img src="/Screenshot_transparent.png" alt="Logo" className="logo-img" />
                     <span className="logo-text">{settings.siteTitle}</span>
                 </Link>
 
@@ -48,6 +47,8 @@ const Navbar = () => {
                                 <a
                                     key={link.path}
                                     href={link.path}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className={`nav-link ${location.pathname === link.path ? 'active' : ''}`}
                                 >
                                     {link.name}
@@ -169,6 +170,8 @@ const Navbar = () => {
                                     {link.path.startsWith('/main/') || link.path.startsWith('/docu/') || link.path.startsWith('http') ? (
                                         <a
                                             href={link.path}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
                                             className={`mobile-link ${location.pathname === link.path ? 'active' : ''}`}
                                             onClick={() => setIsMenuOpen(false)}
                                         >
