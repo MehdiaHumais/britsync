@@ -1946,11 +1946,11 @@ router.post('/documents/:id/send', requireCreateSendPermission, async (req, res)
         // Parallel mode: set all signers to sent immediately
         if (doc.signing_order_enabled) {
             const sortedSigners = [...doc.recipients]
-                .filter(r => r.role === 'signer')
+                .filter(r => r.role === 'signer' || r.role === 'admin')
                 .sort((a, b) => a.signing_order - b.signing_order);
             doc.recipients.forEach(r => {
                 // CC and viewers stay pending (they receive completion email later)
-                if (r.role === 'signer') r.status = 'pending';
+                if (r.role === 'signer' || r.role === 'admin') r.status = 'pending';
             });
             if (sortedSigners.length > 0) {
                 // Activate only the first signer
@@ -1960,7 +1960,7 @@ router.post('/documents/:id/send', requireCreateSendPermission, async (req, res)
         } else {
             // Parallel: activate all signers simultaneously
             doc.recipients.forEach(r => {
-                if (r.role === 'signer') r.status = 'sent';
+                if (r.role === 'signer' || r.role === 'admin') r.status = 'sent';
             });
         }
 
@@ -1978,11 +1978,11 @@ router.post('/documents/:id/send', requireCreateSendPermission, async (req, res)
         const signersToNotify = [];
         if (savedDoc.signing_order_enabled) {
             const sortedRecipients = [...savedDoc.recipients].sort((a, b) => a.signing_order - b.signing_order);
-            const activeSigner = sortedRecipients.find(r => r.status === 'sent' && r.role === 'signer');
+            const activeSigner = sortedRecipients.find(r => r.status === 'sent' && (r.role === 'signer' || r.role === 'admin'));
             if (activeSigner) signersToNotify.push(activeSigner);
         } else {
             savedDoc.recipients.forEach(r => {
-                if (r.status === 'sent' && r.role === 'signer') {
+                if (r.status === 'sent' && (r.role === 'signer' || r.role === 'admin')) {
                     signersToNotify.push(r);
                 }
             });
@@ -2038,7 +2038,7 @@ router.post('/documents/:id/resend', requireCreateSendPermission, async (req, re
         if (!doc) return res.status(404).json({ message: 'Document not found' });
 
         const sortedRecipients = [...doc.recipients].sort((a, b) => a.signing_order - b.signing_order);
-        const activeSigner = sortedRecipients.find(r => ['sent', 'viewed'].includes(r.status) && r.role === 'signer');
+        const activeSigner = sortedRecipients.find(r => ['sent', 'viewed'].includes(r.status) && (r.role === 'signer' || r.role === 'admin'));
 
         if (!activeSigner) return res.status(400).json({ message: 'No active recipient awaiting signature' });
 
@@ -2182,9 +2182,66 @@ router.post('/public/sign/:token/decline', async (req, res) => {
         if (!recipient) return res.status(404).json({ message: 'Recipient not found' });
 
         recipient.status = 'declined';
-        doc.status = 'declined';
-        
+        recipient.decline_reason = req.body.message || '';
+
+        // If signing order is enabled, trigger the next signer in the sequence
+        if (doc.signing_order_enabled) {
+            const sorted = [...doc.recipients].sort((a, b) => a.signing_order - b.signing_order);
+            const nextSigner = sorted.find(r => r.status === 'pending' && ['signer', 'admin'].includes(r.role));
+            if (nextSigner) {
+                nextSigner.status = 'sent';
+                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+                const signingLink = `${frontendUrl}/public/sign/${nextSigner.secure_token}`;
+                
+                const emailHtml = `
+                  <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e0e0e0; border-radius: 12px;">
+                    <h2 style="color: #3b82f6; text-align: center; font-size: 24px;">Signature Request</h2>
+                    <p style="font-size: 16px; line-height: 1.6;">Hello ${nextSigner.name},</p>
+                    <p style="font-size: 16px; line-height: 1.6;">You have been requested to sign <strong>"${doc.document_name}"</strong>.</p>
+                    <div style="text-align: center; margin: 35px 0;">
+                      <a href="${signingLink}" style="background-color: #3b82f6; color: white; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">Open and Sign</a>
+                    </div>
+                  </div>
+                `;
+
+                try {
+                    await emailTransporter.sendMail({
+                        from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                        to: nextSigner.email,
+                        subject: `Signature Request: ${doc.document_name}`,
+                        html: emailHtml
+                    });
+                } catch (emailErr) {
+                    console.error('[EMAIL] Failed to send next-signer email after decline:', emailErr.message);
+                }
+            } else {
+                const allDone = doc.recipients.every(r => !['signer', 'admin'].includes(r.role) || ['completed', 'declined'].includes(r.status));
+                if (allDone) {
+                    doc.status = 'declined';
+                }
+            }
+        } else {
+            const allDone = doc.recipients.every(r => !['signer', 'admin'].includes(r.role) || ['completed', 'declined'].includes(r.status));
+            if (allDone) {
+                doc.status = 'declined';
+            }
+        }
+
         await doc.save();
+
+        // Create top bar notification for owner
+        try {
+            await createNotification({
+                workspace_id: doc.workspace_id,
+                user_id: doc.owner_id,
+                document_id: doc._id,
+                type: 'declined',
+                title: 'Document Declined',
+                message: `"${doc.document_name}" has been declined by ${recipient.name}. Reason: ${req.body.message || 'No reason provided'}`
+            });
+        } catch (notifErr) {
+            console.error('[NOTIF] Failed to create decline notification (non-fatal):', notifErr.message);
+        }
 
         await logAuditEvent({
             workspace_id: doc.workspace_id,
@@ -2202,6 +2259,94 @@ router.post('/public/sign/:token/decline', async (req, res) => {
     }
 });
 
+router.post('/documents/:id/recipients/:recipientId/reset', requireCreateSendPermission, async (req, res) => {
+    try {
+        const { email } = req.body;
+        const doc = await DocuDocumentNew.findOne({ _id: req.params.id, workspace_id: req.user.workspaceId });
+        if (!doc) return res.status(404).json({ message: 'Document not found' });
+
+        const recipient = doc.recipients.id(req.params.recipientId);
+        if (!recipient) return res.status(404).json({ message: 'Recipient not found' });
+
+        if (recipient.status !== 'declined') {
+            return res.status(400).json({ message: 'Recipient has not declined this document' });
+        }
+
+        // Update email if provided
+        if (email) {
+            recipient.email = email.toLowerCase().trim();
+        }
+
+        // Reset status
+        recipient.status = 'pending';
+        recipient.viewed_at = undefined;
+        recipient.signed_at = undefined;
+        recipient.completed_at = undefined;
+        recipient.decline_reason = '';
+
+        // If the document is marked as declined, restore it back to active/sent status
+        if (doc.status === 'declined') {
+            doc.status = 'sent';
+        }
+
+        // Determine if it is their turn or parallel signing
+        let shouldSendEmail = false;
+        if (!doc.signing_order_enabled) {
+            recipient.status = 'sent';
+            shouldSendEmail = true;
+        } else {
+            // Find the current active index
+            const sorted = [...doc.recipients].sort((a, b) => a.signing_order - b.signing_order);
+            // Check if there is any active/sent signer before this one in the order
+            const activeBefore = sorted.find(r => r.signing_order < recipient.signing_order && ['pending', 'sent', 'viewed'].includes(r.status));
+            if (!activeBefore) {
+                recipient.status = 'sent';
+                shouldSendEmail = true;
+            }
+        }
+
+        await doc.save();
+
+        if (shouldSendEmail) {
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            const signingLink = `${frontendUrl}/public/sign/${recipient.secure_token}`;
+            const emailHtml = `
+              <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e0e0e0; border-radius: 12px;">
+                <h2 style="color: #3b82f6; text-align: center; font-size: 24px;">Signature Request</h2>
+                <p style="font-size: 16px; line-height: 1.6;">Hello ${recipient.name},</p>
+                <p style="font-size: 16px; line-height: 1.6;">You have been requested to sign <strong>"${doc.document_name}"</strong>.</p>
+                <div style="text-align: center; margin: 35px 0;">
+                  <a href="${signingLink}" style="background-color: #3b82f6; color: white; padding: 14px 35px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">Open and Sign</a>
+                </div>
+              </div>
+            `;
+            try {
+                await emailTransporter.sendMail({
+                    from: process.env.GMAIL_USER || 'britsyncuk@gmail.com',
+                    to: recipient.email,
+                    subject: `Signature Request: ${doc.document_name}`,
+                    html: emailHtml
+                });
+            } catch (err) {
+                console.error('[EMAIL] Failed to send reset email:', err.message);
+            }
+        }
+
+        await logAuditEvent({
+            workspace_id: doc.workspace_id,
+            document_id: doc._id,
+            recipient_id: recipient.secure_token,
+            user_id: req.user.id,
+            event_type: 'RECIPIENT_RESET',
+            metadata: { new_email: recipient.email }
+        });
+
+        res.json({ success: true, doc });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 router.post('/public/sign/:token/complete', async (req, res) => {
     try {
         const { fields } = req.body;
@@ -2214,7 +2359,14 @@ router.post('/public/sign/:token/complete', async (req, res) => {
         // Validate required fields
         const missingFields = [];
         for (const f of doc.fields) {
-            if (f.required) {
+            // Only validate if it's required AND assigned to the current recipient (or 'all')
+            const isMyField = f.assigned_recipient_id === 'all' ||
+                String(recipient._id) === f.assigned_recipient_id ||
+                recipient.secure_token === f.assigned_recipient_id ||
+                recipient.name === f.assigned_recipient_id ||
+                (recipient.email && f.assigned_recipient_id && recipient.email.toLowerCase() === f.assigned_recipient_id.toLowerCase());
+
+            if (f.required && isMyField) {
                 const clientField = fields.find(cf => cf._id === f._id.toString());
                 const val = clientField ? clientField.value : f.value;
                 const sig = clientField ? clientField.signature_data : f.signature_data;
@@ -2255,7 +2407,7 @@ router.post('/public/sign/:token/complete', async (req, res) => {
         recipient.user_agent = req.headers['user-agent'];
 
         // Determine if all required signers have signed
-        const allSigned = doc.recipients.every(r => r.role !== 'signer' || r.status === 'completed');
+        const allSigned = doc.recipients.every(r => !['signer', 'admin'].includes(r.role) || r.status === 'completed');
 
         if (allSigned) {
             // Compile final PDF
@@ -2336,7 +2488,7 @@ router.post('/public/sign/:token/complete', async (req, res) => {
         } else if (doc.signing_order_enabled) {
             // Sequential signing order: Activate and notify the next pending signer
             const sorted = [...doc.recipients].sort((a, b) => a.signing_order - b.signing_order);
-            const nextSigner = sorted.find(r => r.status === 'pending' && r.role === 'signer');
+            const nextSigner = sorted.find(r => r.status === 'pending' && (r.role === 'signer' || r.role === 'admin'));
             if (nextSigner) {
                 // Activate this signer so they can access their link
                 nextSigner.status = 'sent';

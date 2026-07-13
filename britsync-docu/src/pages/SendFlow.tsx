@@ -8,7 +8,7 @@ interface Recipient {
     _id?: string;
     name: string;
     email: string;
-    role: 'signer' | 'viewer' | 'cc';
+    role: 'signer' | 'admin' | 'viewer' | 'cc';
     signing_order: number;
 }
 
@@ -32,7 +32,7 @@ export const SendFlow: React.FC = () => {
     // Form fields for adding new signers
     const [newName, setNewName] = useState('');
     const [newEmail, setNewEmail] = useState('');
-    const [newRole, setNewRole] = useState<'signer' | 'viewer' | 'cc'>('signer');
+    const [newRole, setNewRole] = useState<'signer' | 'admin' | 'viewer' | 'cc'>('signer');
     const [signingOrderEnabled, setSigningOrderEnabled] = useState(false);
     
     const [loading, setLoading] = useState(true);
@@ -226,15 +226,14 @@ export const SendFlow: React.FC = () => {
                                             <span style={{ fontWeight: 800, fontSize: '0.85rem', color: '#0f172a' }}>{idx + 1}. {rec.name}</span>
                                             <span style={{ fontSize: '0.8rem', color: '#64748b', marginLeft: '0.5rem' }}>({rec.email})</span>
                                             <span style={{
-                                                fontSize: '0.65rem',
-                                                fontWeight: 800,
-                                                background: rec.role === 'signer' ? '#eff6ff' : rec.role === 'viewer' ? '#f0fdf4' : '#fff7ed',
-                                                color: rec.role === 'signer' ? '#2563eb' : rec.role === 'viewer' ? '#16a34a' : '#ea580c',
-                                                padding: '2px 8px',
-                                                borderRadius: '999px',
-                                                marginLeft: '0.75rem',
+                                                background: rec.role === 'signer' ? '#eff6ff' : rec.role === 'admin' ? '#f3e8ff' : rec.role === 'viewer' ? '#f0fdf4' : '#fff7ed',
+                                                color: rec.role === 'signer' ? '#2563eb' : rec.role === 'admin' ? '#7c3aed' : rec.role === 'viewer' ? '#16a34a' : '#ea580c',
+                                                padding: '0.2rem 0.6rem',
+                                                borderRadius: '12px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
                                                 textTransform: 'uppercase'
-                                            }}>{rec.role === 'signer' ? 'signer' : rec.role === 'viewer' ? 'viewer' : 'cc'}</span>
+                                            }}>{rec.role === 'signer' ? 'signer' : rec.role === 'admin' ? 'admin' : rec.role === 'viewer' ? 'viewer' : 'cc'}</span>
                                         </div>
                                         <button className="btn btn-danger" style={{ padding: '0.3rem 0.5rem' }} onClick={() => handleRemoveRecipient(idx)}>
                                             <Trash2 size={14} />
@@ -274,6 +273,7 @@ export const SendFlow: React.FC = () => {
                                         onChange={(val: any) => setNewRole(val)}
                                         options={[
                                             { value: 'signer', label: 'Signer' },
+                                            { value: 'admin', label: 'Admin (Reviewer)' },
                                             { value: 'viewer', label: 'Viewer' },
                                             { value: 'cc', label: 'CC Copy' }
                                         ]}

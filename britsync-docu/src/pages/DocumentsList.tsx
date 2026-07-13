@@ -175,6 +175,24 @@ export const DocumentsList: React.FC = () => {
             setLoading(false);
         }
     };
+    const handleResetRecipient = async (recipient: any) => {
+        const newEmail = window.prompt(`Update email address to resend signature link to ${recipient.name}:`, recipient.email);
+        if (newEmail === null) return;
+
+        try {
+            await apiCall(`documents/${timelineDoc._id}/recipients/${recipient._id}/reset`, {
+                method: 'POST',
+                body: { email: newEmail }
+            });
+            alert('Recipient reset successfully! Email sent to the new address.');
+            const updatedDoc = await apiCall(`documents/${timelineDoc._id}`);
+            setTimelineDoc(updatedDoc);
+            fetchDocuments();
+        } catch (err: any) {
+            console.error(err);
+            alert(err.message || 'Failed to reset recipient.');
+        }
+    };
 
     // Filters and sorting
     const folderFiltered = allDocs.filter(doc => {
@@ -401,7 +419,7 @@ export const DocumentsList: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {sortedDocs.map((doc) => {
-                                        const activeSigner = doc.recipients?.find((r: any) => ['sent', 'viewed'].includes(r.status) && r.role === 'signer');
+                                        const activeSigner = doc.recipients?.find((r: any) => ['sent', 'viewed'].includes(r.status) && ['signer', 'admin'].includes(r.role));
                                         const myRecipient = doc.recipients?.find((r: any) => 
                                             r.email.toLowerCase() === currentUser?.email?.toLowerCase() && 
                                             ['sent', 'viewed'].includes(r.status)
@@ -422,7 +440,7 @@ export const DocumentsList: React.FC = () => {
                                                 <td style={{ fontWeight: 800, color: '#0f172a' }}>{doc.document_name}</td>
                                                 <td>
                                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                         {doc.recipients?.filter((r: any) => r.role === 'signer').map((r: any, idx: number) => {
+                                                         {doc.recipients?.filter((r: any) => ['signer', 'admin'].includes(r.role)).map((r: any, idx: number) => {
                                                              const isSigned = r.status === 'completed';
                                                              const isDeclined = r.status === 'declined';
                                                              const isActive = ['sent', 'viewed'].includes(r.status);
@@ -529,7 +547,7 @@ export const DocumentsList: React.FC = () => {
                         /* GRID LAYOUT VIEW */
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem', textAlign: 'left' }}>
                             {sortedDocs.map((doc) => {
-                                const activeSigner = doc.recipients?.find((r: any) => ['sent', 'viewed'].includes(r.status) && r.role === 'signer');
+                                const activeSigner = doc.recipients?.find((r: any) => ['sent', 'viewed'].includes(r.status) && ['signer', 'admin'].includes(r.role));
                                 const isSelected = selectedIds.includes(doc._id);
                                 return (
                                     <div 
@@ -709,7 +727,7 @@ export const DocumentsList: React.FC = () => {
 
                             {/* Signing Progress Bar */}
                             {(() => {
-                                const signers = timelineDoc.recipients?.filter((r: any) => r.role === 'signer') || [];
+                                const signers = timelineDoc.recipients?.filter((r: any) => ['signer', 'admin'].includes(r.role)) || [];
                                 const completed = signers.filter((r: any) => r.status === 'completed').length;
                                 const pct = signers.length > 0 ? Math.round((completed / signers.length) * 100) : 0;
                                 return (
@@ -760,7 +778,7 @@ export const DocumentsList: React.FC = () => {
                                                         {r.viewed_at && (
                                                             <span style={{ fontSize: '0.7rem', color: '#64748b' }}>👁 Viewed: <strong>{new Date(r.viewed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong></span>
                                                         )}
-                                                        {r.completed_at && (
+                                                    {r.completed_at && (
                                                             <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✓ Signed: <strong>{new Date(r.completed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong></span>
                                                         )}
                                                         {!r.viewed_at && !r.completed_at && r.status === 'sent' && (
@@ -770,6 +788,21 @@ export const DocumentsList: React.FC = () => {
                                                             <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Will be notified after previous signer</span>
                                                         )}
                                                     </div>
+                                                    {r.status === 'declined' && (
+                                                        <>
+                                                            <div style={{ marginTop: '0.35rem', padding: '0.4rem 0.6rem', background: '#fee2e2', borderLeft: '3px solid #ef4444', borderRadius: '4px', color: '#991b1b', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                                                                <strong>Decline Reason:</strong> {r.decline_reason || 'No reason provided'}
+                                                            </div>
+                                                            {userRole !== 'viewer' && (
+                                                                <button 
+                                                                    onClick={() => handleResetRecipient(r)}
+                                                                    style={{ marginTop: '0.5rem', background: '#2563eb', border: 'none', color: 'white', borderRadius: '4px', padding: '0.3rem 0.6rem', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                                                                >
+                                                                    ✏️ Edit Email & Resend
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                         );

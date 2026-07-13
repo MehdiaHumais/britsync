@@ -65,7 +65,7 @@ export const PublicSigning: React.FC = () => {
     const [myFieldIds, setMyFieldIds] = useState<string[]>([]);
     const [fields, setFields] = useState<PlacedField[]>([]);
 
-    const isFieldMine = () => true;
+    const isFieldMine = (f: PlacedField) => myFieldIds.includes(f._id);
     
     const [pdfDoc, setPdfDoc] = useState<any>(null);
     const [numPages, setNumPages] = useState(0);
@@ -1007,13 +1007,13 @@ const SigningPageContainer: React.FC<SigningPageProps> = ({
     pageNum,
     pdfDoc,
     fields,
-    recipient,
+    recipient: _recipient,
     onUpdateFieldValue,
     onOpenSignatureModal,
     onFileUploadBase64,
     validationErrors,
     brandColor,
-    myFieldIds
+    myFieldIds: _myFieldIds
 }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -1079,7 +1079,12 @@ const SigningPageContainer: React.FC<SigningPageProps> = ({
             <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                 {pageFields.map(field => {
-                    const isMyField = true;
+                    const isMyField = _myFieldIds.includes(field._id);
+                    const isAdmin = _recipient?.role === 'admin';
+                    const shouldShowField = isMyField || isAdmin || !!field.value || !!field.signature_data;
+                    
+                    if (!shouldShowField) return null;
+
                     const isError = validationErrors.includes(field._id);
                     
 

@@ -7,6 +7,7 @@ import { BackupCredentialsModal } from '../components/BackupCredentialsModal';
 
 export const Login: React.FC = () => {
     const navigate = useNavigate();
+
     const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 
     useEffect(() => {
@@ -14,6 +15,7 @@ export const Login: React.FC = () => {
         window.addEventListener('resize', checkMobile);
         return () => window.removeEventListener('resize', checkMobile);
     }, []);
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);

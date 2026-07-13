@@ -80,6 +80,7 @@ export const DocumentEditor: React.FC = () => {
     // Quick Add Signer states
     const [newSignerName, setNewSignerName] = useState('');
     const [newSignerEmail, setNewSignerEmail] = useState('');
+    const [newSignerRole, setNewSignerRole] = useState<'signer' | 'admin' | 'viewer' | 'cc'>('signer');
     const [addingSigner, setAddingSigner] = useState(false);
 
     // History stack for Undo / Redo
@@ -349,7 +350,7 @@ export const DocumentEditor: React.FC = () => {
             const newRec = {
                 name: newSignerName,
                 email: newSignerEmail,
-                role: 'signer' as const,
+                role: newSignerRole,
                 signing_order: recipients.length + 1,
                 secure_token: ''
             };
@@ -364,6 +365,7 @@ export const DocumentEditor: React.FC = () => {
             setRecipients(updatedDoc.recipients || []);
             setNewSignerName('');
             setNewSignerEmail('');
+            setNewSignerRole('signer');
         } catch (err: any) {
             console.error(err);
             alert(err.message || 'Failed to add signer.');
@@ -986,6 +988,16 @@ export const DocumentEditor: React.FC = () => {
                                     <div key={rec._id || rIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.75rem' }}>
                                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '170px' }}>
                                             <strong>{rec.name}</strong>
+                                            <span style={{
+                                                fontSize: '0.6rem',
+                                                padding: '1px 5px',
+                                                borderRadius: '4px',
+                                                background: rec.role === 'admin' ? '#f3e8ff' : rec.role === 'viewer' ? '#f0fdf4' : rec.role === 'cc' ? '#fff7ed' : '#eff6ff',
+                                                color: rec.role === 'admin' ? '#7c3aed' : rec.role === 'viewer' ? '#16a34a' : rec.role === 'cc' ? '#ea580c' : '#2563eb',
+                                                marginLeft: '0.35rem',
+                                                textTransform: 'uppercase',
+                                                fontWeight: 800
+                                            }}>{rec.role || 'signer'}</span>
                                             <div style={{ color: '#64748b', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rec.email}</div>
                                         </div>
                                         <button 
@@ -1021,6 +1033,19 @@ export const DocumentEditor: React.FC = () => {
                                 onChange={e => setNewSignerEmail(e.target.value)}
                                 disabled={addingSigner}
                             />
+                            <div style={{ marginBottom: '0.15rem' }}>
+                                <Select
+                                    label="Role"
+                                    value={newSignerRole}
+                                    onChange={(val: any) => setNewSignerRole(val)}
+                                    options={[
+                                        { value: 'signer', label: 'Signer' },
+                                        { value: 'admin', label: 'Admin (Reviewer)' },
+                                        { value: 'viewer', label: 'Viewer' },
+                                        { value: 'cc', label: 'CC Copy' }
+                                    ]}
+                                />
+                            </div>
                             <button 
                                 className="btn btn-secondary" 
                                 style={{ padding: '0.4rem', fontSize: '0.75rem', justifyContent: 'center' }}

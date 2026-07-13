@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const RecipientSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, lowercase: true, trim: true },
-    role: { type: String, enum: ['signer', 'approver', 'viewer', 'cc'], default: 'signer' },
+    role: { type: String, enum: ['signer', 'admin', 'approver', 'viewer', 'cc'], default: 'signer' },
     signing_order: { type: Number, default: 1 },
     secure_token: { type: String, default: '' },
     status: { type: String, enum: ['pending', 'sent', 'viewed', 'completed', 'declined'], default: 'pending' },
@@ -12,6 +12,7 @@ const RecipientSchema = new mongoose.Schema({
     completed_at: { type: Date },
     ip_address: { type: String, default: '' },
     user_agent: { type: String, default: '' },
+    decline_reason: { type: String, default: '' },
     auth_method: { type: String, enum: ['none', 'passcode', 'otp'], default: 'none' },
     passcode_hash: { type: String, default: '' },
     otp_hash: { type: String, default: '' },
