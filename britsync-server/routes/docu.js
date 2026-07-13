@@ -1756,7 +1756,15 @@ router.patch('/documents/:id', requireCreateSendPermission, async (req, res) => 
         if (doc.status === 'completed') return res.status(400).json({ message: 'Completed documents cannot be modified' });
 
         const { fields, document_name, expires_at, recipients, signing_order_enabled } = req.body;
-        if (fields) doc.fields = fields;
+        if (fields) {
+            doc.fields = fields.map((f) => {
+                if (f._id && typeof f._id === 'string' && f._id.startsWith('temp-')) {
+                    const { _id, ...rest } = f;
+                    return rest;
+                }
+                return f;
+            });
+        }
         if (document_name) doc.document_name = document_name;
         if (expires_at) doc.expires_at = new Date(expires_at);
         if (recipients) doc.recipients = recipients;
@@ -1981,7 +1989,7 @@ router.post('/documents/:id/send', requireCreateSendPermission, async (req, res)
         }
 
         for (const recipientToNotify of signersToNotify) {
-            const signingLink = `${frontendUrl}/docu/public/sign/${recipientToNotify.secure_token}`;
+            const signingLink = `${frontendUrl}/public/sign/${recipientToNotify.secure_token}`;
             const emailHtml = `
               <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e0e0e0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                 <h2 style="color: #3b82f6; text-align: center; font-size: 24px; margin-bottom: 20px;">Signature Request</h2>
@@ -2035,7 +2043,7 @@ router.post('/documents/:id/resend', requireCreateSendPermission, async (req, re
         if (!activeSigner) return res.status(400).json({ message: 'No active recipient awaiting signature' });
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        const signingLink = `${frontendUrl}/docu/public/sign/${activeSigner.secure_token}`;
+        const signingLink = `${frontendUrl}/public/sign/${activeSigner.secure_token}`;
         
         const emailHtml = `
           <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e0e0e0; border-radius: 12px;">
@@ -2079,9 +2087,21 @@ router.get('/public/sign/:token', async (req, res) => {
 
         const recipient = doc.recipients.find(r => r.secure_token === req.params.token);
 
+        // Compute field IDs belonging to this recipient
+        const myFieldIds = doc.fields
+            .filter(f => {
+                if (f.assigned_recipient_id === 'all') return true;
+                if (String(recipient._id) === f.assigned_recipient_id) return true;
+                if (recipient.secure_token === f.assigned_recipient_id) return true;
+                if (recipient.name === f.assigned_recipient_id) return true;
+                if (recipient.email?.toLowerCase() === f.assigned_recipient_id?.toLowerCase()) return true;
+                return false;
+            })
+            .map(f => f._id.toString());
+
         // Check completion status
         if (doc.status === 'completed') {
-            return res.json({ doc, recipient, state: 'completed' });
+            return res.json({ doc, recipient, state: 'completed', myFieldIds });
         }
 
         // Check expiration
@@ -2104,7 +2124,7 @@ router.get('/public/sign/:token', async (req, res) => {
 
         // Block sequential signer who has not been activated yet
         if (recipient.status === 'pending') {
-            return res.json({ doc, recipient, state: 'not_your_turn' });
+            return res.json({ doc, recipient, state: 'not_your_turn', myFieldIds });
         }
 
         // Enforcement of Recipient verification challenge
@@ -2135,7 +2155,19 @@ router.get('/public/sign/:token', async (req, res) => {
             });
         }
 
-        res.json({ doc, recipient, state: 'signing' });
+        // Read PDF and embed as base64 to avoid IDM interception of direct file URL
+        let pdfBase64 = null;
+        try {
+            const filename = doc.original_file_url.split('/uploads/')[1] || doc.original_file_url.split('/').pop();
+            const filePath = path.join(__dirname, '..', 'uploads', filename);
+            if (fs.existsSync(filePath)) {
+                pdfBase64 = fs.readFileSync(filePath).toString('base64');
+            }
+        } catch (pdfErr) {
+            console.error('[PUBLIC_SIGN] Failed to read PDF:', pdfErr.message);
+        }
+
+        res.json({ doc, recipient, state: 'signing', myFieldIds, pdfBase64 });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -2182,8 +2214,7 @@ router.post('/public/sign/:token/complete', async (req, res) => {
         // Validate required fields
         const missingFields = [];
         for (const f of doc.fields) {
-            const isMyField = f.assigned_recipient_id === recipient._id.toString() || f.assigned_recipient_id === recipient.email;
-            if (isMyField && f.required) {
+            if (f.required) {
                 const clientField = fields.find(cf => cf._id === f._id.toString());
                 const val = clientField ? clientField.value : f.value;
                 const sig = clientField ? clientField.signature_data : f.signature_data;
@@ -2208,14 +2239,11 @@ router.post('/public/sign/:token/complete', async (req, res) => {
         for (const f of fields) {
             const docField = doc.fields.id(f._id);
             if (docField) {
-                const isMyField = docField.assigned_recipient_id === recipient._id.toString() || docField.assigned_recipient_id === recipient.email;
-                if (isMyField) {
-                    if (f.signature_data) {
-                        docField.signature_data = f.signature_data;
-                        docField.value = 'Signed';
-                    } else if (f.value !== undefined) {
-                        docField.value = f.value;
-                    }
+                if (f.signature_data) {
+                    docField.signature_data = f.signature_data;
+                    docField.value = 'Signed';
+                } else if (f.value !== undefined) {
+                    docField.value = f.value;
                 }
             }
         }
@@ -2314,7 +2342,7 @@ router.post('/public/sign/:token/complete', async (req, res) => {
                 nextSigner.status = 'sent';
                 await doc.save();
                 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-                const signingLink = `${frontendUrl}/docu/public/sign/${nextSigner.secure_token}`;
+                const signingLink = `${frontendUrl}/public/sign/${nextSigner.secure_token}`;
                 
                 const emailHtml = `
                   <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e0e0e0; border-radius: 12px;">

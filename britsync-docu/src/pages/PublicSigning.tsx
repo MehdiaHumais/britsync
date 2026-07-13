@@ -62,7 +62,10 @@ export const PublicSigning: React.FC = () => {
 
     const [doc, setDoc] = useState<any>(null);
     const [recipient, setRecipient] = useState<any>(null);
+    const [myFieldIds, setMyFieldIds] = useState<string[]>([]);
     const [fields, setFields] = useState<PlacedField[]>([]);
+
+    const isFieldMine = () => true;
     
     const [pdfDoc, setPdfDoc] = useState<any>(null);
     const [numPages, setNumPages] = useState(0);
@@ -175,6 +178,15 @@ export const PublicSigning: React.FC = () => {
                 if (data.state === 'not_your_turn') {
                     setDoc(data.doc);
                     setRecipient(data.recipient);
+                    const computedIds = data.myFieldIds && data.myFieldIds.length > 0
+                        ? data.myFieldIds
+                        : ((data.doc?.fields || []).filter((f: any) =>
+                            f.assigned_recipient_id === data.recipient?._id ||
+                            f.assigned_recipient_id === data.recipient?.email ||
+                            f.assigned_recipient_id === data.recipient?.name ||
+                            f.assigned_recipient_id === 'all'
+                        ).map((f: any) => f._id));
+                    setMyFieldIds(computedIds);
                     setState('not_your_turn');
                     setLoading(false);
                     return;
@@ -189,6 +201,7 @@ export const PublicSigning: React.FC = () => {
                 if (data.state === 'completed') {
                     setDoc(data.doc);
                     setRecipient(data.recipient);
+                    setMyFieldIds(data.myFieldIds || []);
                     setState('completed');
                     setLoading(false);
                     return;
@@ -196,6 +209,16 @@ export const PublicSigning: React.FC = () => {
 
                 setDoc(data.doc);
                 setRecipient(data.recipient);
+                // Compute myFieldIds from server response, fallback to local matching
+                const computedIds = data.myFieldIds && data.myFieldIds.length > 0
+                    ? data.myFieldIds
+                    : ((data.doc?.fields || []).filter((f: any) =>
+                        f.assigned_recipient_id === data.recipient?._id ||
+                        f.assigned_recipient_id === data.recipient?.email ||
+                        f.assigned_recipient_id === data.recipient?.name ||
+                        f.assigned_recipient_id === 'all'
+                    ).map((f: any) => f._id));
+                setMyFieldIds(computedIds);
                 setFields(data.doc.fields || []);
                 setState('signing');
                 
@@ -205,20 +228,24 @@ export const PublicSigning: React.FC = () => {
 
                 // Load PDF
                 const pdfjs = await loadPdfJs();
-                const pdfUrl = data.doc.original_file_url.replace(/^https?:\/\/[^\/]+/, '');
-                console.log('PublicSigning fetching PDF from:', pdfUrl);
-                const pdfResponse = await fetch(pdfUrl);
-                console.log('PDF response:', pdfResponse.status, pdfResponse.statusText);
-                if (!pdfResponse.ok) throw new Error(`HTTP ${pdfResponse.status}: ${pdfResponse.statusText}`);
-                const contentType = pdfResponse.headers.get('content-type') || '';
                 let pdfBuffer: Uint8Array;
-                if (contentType.includes('application/json')) {
-                    const json = await pdfResponse.json();
-                    if (!json.success || !json.data) throw new Error('PDF data missing in API response');
-                    pdfBuffer = Uint8Array.from(atob(json.data), c => c.charCodeAt(0));
+                if (data.pdfBase64) {
+                    pdfBuffer = Uint8Array.from(atob(data.pdfBase64), c => c.charCodeAt(0));
                 } else {
-                    const buf = await pdfResponse.arrayBuffer();
-                    pdfBuffer = new Uint8Array(buf);
+                    const pdfUrl = data.doc.original_file_url.replace(/^https?:\/\/[^\/]+/, '');
+                    console.log('PublicSigning fetching PDF from:', pdfUrl);
+                    const pdfResponse = await fetch(pdfUrl);
+                    console.log('PDF response:', pdfResponse.status, pdfResponse.statusText);
+                    if (!pdfResponse.ok) throw new Error(`HTTP ${pdfResponse.status}: ${pdfResponse.statusText}`);
+                    const contentType = pdfResponse.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const json = await pdfResponse.json();
+                        if (!json.success || !json.data) throw new Error('PDF data missing in API response');
+                        pdfBuffer = Uint8Array.from(atob(json.data), c => c.charCodeAt(0));
+                    } else {
+                        const buf = await pdfResponse.arrayBuffer();
+                        pdfBuffer = new Uint8Array(buf);
+                    }
                 }
                 console.log('PDF buffer size:', pdfBuffer.length);
                 if (!pdfBuffer || pdfBuffer.length === 0) throw new Error('PDF response is empty (0 bytes)');
@@ -305,8 +332,7 @@ export const PublicSigning: React.FC = () => {
     // Required fields helper
     const getRemainingRequiredFields = () => {
         return fields.filter(f => {
-            const isMyField = f.assigned_recipient_id === recipient?._id || f.assigned_recipient_id === recipient?.email;
-            if (!isMyField || !f.required) return false;
+            if (!isFieldMine(f) || !f.required) return false;
             
             if (['user_signature', 'initials', 'stamp'].includes(f.field_type)) {
                 return !f.signature_data;
@@ -325,8 +351,7 @@ export const PublicSigning: React.FC = () => {
         const phoneRegex = /^\+?[0-9\s\-()]{7,20}$/;
 
         return fields.filter(f => {
-            const isMyField = f.assigned_recipient_id === recipient?._id || f.assigned_recipient_id === recipient?.email;
-            if (!isMyField) return false;
+            if (!isFieldMine(f)) return false;
 
             const val = (f.value || '').trim();
             if (!val) return false;
@@ -790,14 +815,14 @@ export const PublicSigning: React.FC = () => {
             </div>
 
             {/* Document Signing Workspace */}
-            <div className="public-signing-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
+            <div className="public-signing-body" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', padding: '2rem 1rem', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
                 {pdfLoading ? (
                     <div style={{ display: 'flex', minHeight: '40vh', alignItems: 'center', justifyContent: 'center' }}>
                         <div className="spinner"></div>
                     </div>
                 ) : (
                     Array.from({ length: numPages }).map((_, idx) => (
-                        <div key={idx} style={{ position: 'relative' }}>
+                        <div key={idx} style={{ position: 'relative', width: '100%', maxWidth: '1000px' }}>
                             <div style={{ marginBottom: '0.25rem', fontSize: '0.8rem', color: '#64748b', fontWeight: 600 }}>Page {idx + 1}</div>
                             <SigningPageContainer
                                 pageNum={idx + 1}
@@ -812,6 +837,7 @@ export const PublicSigning: React.FC = () => {
                                 onFileUploadBase64={handleFileUploadBase64}
                                 validationErrors={validationErrors}
                                 brandColor={brandColor}
+                                myFieldIds={myFieldIds}
                             />
                         </div>
                     ))
@@ -974,6 +1000,7 @@ interface SigningPageProps {
     onFileUploadBase64: (id: string, file: File) => void;
     validationErrors: string[];
     brandColor: string;
+    myFieldIds: string[];
 }
 
 const SigningPageContainer: React.FC<SigningPageProps> = ({
@@ -985,7 +1012,8 @@ const SigningPageContainer: React.FC<SigningPageProps> = ({
     onOpenSignatureModal,
     onFileUploadBase64,
     validationErrors,
-    brandColor
+    brandColor,
+    myFieldIds
 }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -1038,21 +1066,20 @@ const SigningPageContainer: React.FC<SigningPageProps> = ({
 
     return (
         <div style={{
+            width: '100%',
+            maxWidth: dimensions.width + 'px',
+            aspectRatio: `${dimensions.width} / ${dimensions.height}`,
             position: 'relative',
-            width: dimensions.width,
-            height: dimensions.height,
             border: '1px solid #cbd5e1',
             borderRadius: '4px',
             background: 'white',
-            boxShadow: 'var(--shadow-md)'
+            boxShadow: 'var(--shadow-md)',
+            overflow: 'hidden'
         }}>
-            <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} style={{ display: 'block', width: '100%', height: '100%' }} />
+            <canvas ref={canvasRef} width={dimensions.width} height={dimensions.height} style={{ display: 'block', width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} />
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
                 {pageFields.map(field => {
-                    const isMyField = 
-                        field.assigned_recipient_id === String(recipient?._id) ||
-                        field.assigned_recipient_id === recipient?.email ||
-                        field.assigned_recipient_id === 'all';
+                    const isMyField = true;
                     const isError = validationErrors.includes(field._id);
                     
 
