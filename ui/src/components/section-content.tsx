@@ -2,51 +2,28 @@ import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import SafeImage from "@/components/safe-image";
+import { prisma } from "@/lib/db";
 
 interface SectionContentProps {
     dataSection: string;
     displayTitle: string;
 }
 
-interface NewsArticle {
-    id: number;
-    title: string;
-    summary: string;
-    link: string;
-    publish_date: string;
-    category: string;
-    image_url: string | null;
-}
-
-const SECTION_MAP: Record<string, string> = {
-    "WORLD_NEWS": "world",
-    "AI": "ai",
-    "LIFESTYLE": "lifestyle",
-};
-
-const API_BASE = process.env.NEWS_API_URL || "http://127.0.0.1:8000";
-
-function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, "").trim();
-}
-
-function imageUrl(raw: string | null): string {
-    if (!raw) return "";
-    if (raw.startsWith("http")) return raw;
-    return `${API_BASE}/public${raw}`;
-}
-
 export default async function SectionContent({ dataSection, displayTitle }: SectionContentProps) {
-    let articles: NewsArticle[] = [];
-    const cat = SECTION_MAP[dataSection] || "world";
+    let articles: any[] = [];
 
     try {
-        const res = await fetch(`${API_BASE}/news/${cat}`, { cache: "no-store" });
-        if (res.ok) {
-            articles = await res.json();
-        }
+        articles = await prisma.article.findMany({
+            where: {
+                section: dataSection
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            take: 50
+        });
     } catch (err) {
-        console.error(`SectionContent (${dataSection}): FastAPI fetch failed.`, err);
+        console.error(`SectionContent (${dataSection}): DB query failed.`, err);
     }
 
     return (
@@ -65,23 +42,30 @@ export default async function SectionContent({ dataSection, displayTitle }: Sect
                 {articles.length > 0 ? (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {articles.map((article) => (
-                            <Link key={article.id} href={`/news/story/${article.id}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
-                                <div className="relative mb-6 overflow-hidden aspect-video block">
-                                    <SafeImage
-                                        src={imageUrl(article.image_url)}
-                                        alt={article.title}
-                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                    />
+                            <Link key={article.id} href={`/article/${article.slug}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
+                                <div className="relative mb-6 overflow-hidden aspect-video block bg-stone-100">
+                                    {article.thumbnail ? (
+                                        <SafeImage
+                                            src={article.thumbnail}
+                                            alt={article.title}
+                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex flex-col items-center justify-center bg-stone-50 border border-stone-200">
+                                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-300">Zyphra Matrix</div>
+                                            <div className="w-8 h-[1px] bg-stone-200 mt-2" />
+                                        </div>
+                                    )}
                                 </div>
                                 <h3 className="text-2xl font-serif font-bold mb-4 flex-1 leading-tight group-hover:text-stone-600 transition-colors">
                                     {article.title}
                                 </h3>
                                 <p className="text-stone-500 text-sm leading-relaxed mb-4 flex-1 line-clamp-3">
-                                    {stripHtml(article.summary || stripHtml(article.title)).slice(0, 200)}
+                                    {article.content ? article.content.replace(/<[^>]*>/g, "").trim().slice(0, 200) : article.title}
                                 </p>
                                 <div className="flex items-center justify-between pt-6 border-t border-stone-100">
                                     <span className="text-xs font-mono text-stone-400 uppercase">
-                                        {article.publish_date ? new Date(article.publish_date).toLocaleDateString() : "Live Report"}
+                                        {article.createdAt ? new Date(article.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : "Live Report"}
                                     </span>
                                     <span className="font-serif italic text-stone-900 text-sm group-hover:translate-x-1 transition-transform">
                                         Read Story &rarr;

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { encrypt } from "@/lib/auth";
+import { cookies } from "next/headers";
 
 export async function POST(request: Request) {
     try {
@@ -45,12 +46,15 @@ export async function POST(request: Request) {
 
         // Login immediately (Set cookie)
         const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
-        const session = await encrypt({ id: user.id, email: user.email, name: user.name, expires });
+        const session = await encrypt({ id: user.id, email: user.email, name: user.name });
 
-        const response = NextResponse.json({ success: true, user });
-        response.cookies.set("session", session, { expires, httpOnly: true });
+        const cookieStore = await cookies();
+        cookieStore.set("session", session, {
+            httpOnly: true,
+            expires
+        });
 
-        return response;
+        return NextResponse.json({ success: true, user });
 
     } catch (e) {
         console.error(e);

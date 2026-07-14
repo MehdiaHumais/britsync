@@ -147,10 +147,12 @@ def fetch_rss_news(category):
         else:
              print(" Success.")
         
-        # QUALITY CHECK: Accept content that's at least 20 words
-        if not final_summary or len(final_summary.split()) < 20:
-            print(f"    - [REJECT] Content too short for '{clean_title[:30]}...' ({len(final_summary.split()) if final_summary else 0} words). Waiting for AI Quota to reset.")
+        # QUALITY CHECK: Ensure we have content, but don't reject short fallback content
+        if not final_summary:
+            print(f"    - [REJECT] No content generated for '{clean_title[:30]}...'. Skipping.")
             continue
+        if len(final_summary.split()) < 20:
+            print(f"    - [NOTICE] Content short for '{clean_title[:30]}...' ({len(final_summary.split())} words). Publishing as news brief.")
 
         final_summary = remove_emojis(final_summary)
 
