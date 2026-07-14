@@ -5,10 +5,10 @@ import { Navbar } from "@/components/navbar";
 import { Paywall } from "@/components/paywall";
 import { Badge } from "@/components/ui/badge";
 import { notFound } from "next/navigation";
-import { Calendar, Clock, Share2, Bookmark } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Calendar, Clock } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { TimerPaywall } from "@/components/timer-paywall";
+import { ArticleActions } from "@/components/article-actions";
 
 export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug: rawSlug } = await params;
@@ -34,6 +34,17 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     if (!article) {
         return notFound();
     }
+
+    // Calculate word count and read time
+    const wordCount = article.content ? article.content.replace(/<[^>]*>/g, '').split(/\s+/).filter(Boolean).length : 0;
+    const readTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    // Format date
+    const formattedDate = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+    }).format(new Date(article.createdAt));
 
     // Check Access
     const session = await getSession();
@@ -91,16 +102,19 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
                             <div className="flex items-center gap-6 text-stone-400 text-xs font-bold uppercase tracking-widest">
                                 <div className="flex items-center gap-2">
                                     <Calendar className="w-4 h-4" />
-                                    <span>Jan 22, 2026</span>
+                                    <span>{formattedDate}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <Clock className="w-4 h-4" />
-                                    <span>8 Min Read</span>
+                                    <span>{readTime} Min Read</span>
                                 </div>
                             </div>
-                            <div className="flex-1 md:flex justify-end hidden gap-4">
-                                <Button variant="ghost" size="icon" className="rounded-full"><Share2 className="w-4 h-4" /></Button>
-                                <Button variant="ghost" size="icon" className="rounded-full"><Bookmark className="w-4 h-4" /></Button>
+                            <div className="flex-1 flex justify-end gap-4">
+                                <ArticleActions
+                                    articleId={article.id}
+                                    articleTitle={article.title}
+                                    articleSlug={article.slug}
+                                />
                             </div>
                         </div>
                     </header>
