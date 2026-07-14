@@ -2,34 +2,19 @@ import { Navbar } from "@/components/navbar";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import SafeImage from "@/components/safe-image";
-
-interface NewsArticle {
-    id: number;
-    title: string;
-    summary: string;
-    link: string;
-    publish_date: string;
-    category: string;
-    image_url: string | null;
-}
+import { prisma } from "@/lib/db";
 
 const CATEGORIES = [
+    { id: "world", label: "World News", emoji: "🌍" },
     { id: "ai", label: "AI", emoji: "🤖" },
     { id: "lifestyle", label: "Lifestyle", emoji: "🌿" },
-    { id: "world", label: "World News", emoji: "🌍" },
 ];
 
-const API_BASE = process.env.NEWS_API_URL || "http://127.0.0.1:8000";
-
-function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, "").trim();
-}
-
-function imageUrl(raw: string | null): string {
-    if (!raw) return "";
-    if (raw.startsWith("http")) return raw;
-    return `${API_BASE}/public${raw}`;
-}
+const SECTION_MAP: Record<string, string> = {
+    "world": "WORLD_NEWS",
+    "ai": "AI",
+    "lifestyle": "LIFESTYLE",
+};
 
 export const dynamic = "force-dynamic";
 
@@ -40,19 +25,25 @@ export default async function NewsPage({
 }) {
     const { cat } = await searchParams;
     const activeCat = cat || "world";
+    const dbSection = SECTION_MAP[activeCat] || "WORLD_NEWS";
 
-    let articles: NewsArticle[] = [];
+    let articles: any[] = [];
     try {
-        const res = await fetch(`${API_BASE}/news/${activeCat}`, { cache: "no-store" });
-        if (res.ok) {
-            articles = await res.json();
-        }
+        articles = await prisma.article.findMany({
+            where: {
+                section: dbSection
+            },
+            orderBy: {
+                createdAt: "desc"
+            },
+            take: 50
+        });
     } catch (err) {
-        console.error(`NewsPage: FastAPI fetch failed for ${activeCat}`, err);
+        console.error(`NewsPage: DB fetch failed for ${dbSection}`, err);
     }
 
     return (
-        <div className="min-h-screen flex flex-col">
+        <div className="min-h-screen flex flex-col bg-stone-50">
             <Navbar />
             <main className="container mx-auto px-4 py-12">
                 <div className="mb-12 text-center">
@@ -72,10 +63,10 @@ export default async function NewsPage({
                             <a
                                 key={c.id}
                                 href={`?cat=${c.id}`}
-                                className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest transition-all ${
+                                className={`px-6 py-3 rounded-none text-xs font-bold uppercase tracking-widest border transition-all ${
                                     isActive
-                                        ? "bg-stone-900 text-white"
-                                        : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                                        ? "bg-stone-900 border-stone-900 text-white"
+                                        : "bg-white border-stone-200 text-stone-500 hover:bg-stone-50 hover:text-stone-900"
                                 }`}
                             >
                                 {c.emoji} {c.label}
@@ -87,10 +78,10 @@ export default async function NewsPage({
                 {articles.length > 0 ? (
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {articles.map((article) => (
-                            <Link key={article.id} href={`/news/story/${article.id}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
-                                <div className="relative mb-6 overflow-hidden aspect-video block">
+                            <Link key={article.id} href={`/article/${article.slug}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
+                                <div className="relative mb-6 overflow-hidden aspect-video block bg-stone-100 border border-stone-100">
                                     <SafeImage
-                                        src={imageUrl(article.image_url)}
+                                        src={article.thumbnail || ""}
                                         alt={article.title}
                                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                                     />
@@ -99,11 +90,11 @@ export default async function NewsPage({
                                     {article.title}
                                 </h3>
                                 <p className="text-stone-500 text-sm leading-relaxed mb-4 flex-1 line-clamp-3">
-                                    {stripHtml(article.summary || stripHtml(article.title)).slice(0, 200)}
+                                    {article.content ? article.content.replace(/<[^>]*>/g, "").trim().slice(0, 200) : article.title}
                                 </p>
                                 <div className="flex items-center justify-between pt-6 border-t border-stone-100">
                                     <span className="text-xs font-mono text-stone-400 uppercase">
-                                        {article.publish_date ? new Date(article.publish_date).toLocaleDateString() : "Live Report"}
+                                        {article.createdAt ? new Date(article.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() : "Live Report"}
                                     </span>
                                     <span className="font-serif italic text-stone-900 text-sm group-hover:translate-x-1 transition-transform">
                                         Read Story &rarr;
@@ -113,8 +104,11 @@ export default async function NewsPage({
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center py-20 border border-dashed border-stone-200">
-                        <p className="text-stone-400 font-serif italic mb-4">No news available in this category at the moment.</p>
+                    <div className="text-center py-20 border border-dashed border-stone-200 bg-white">
+                        <p className="text-stone-400 font-serif italic mb-4">No stories published in this category yet.</p>
+                        <Link href="/">
+                            <button className="px-6 py-2 bg-stone-900 text-white rounded-none uppercase tracking-widest text-[10px] font-bold">Return Home</button>
+                        </Link>
                     </div>
                 )}
             </main>
