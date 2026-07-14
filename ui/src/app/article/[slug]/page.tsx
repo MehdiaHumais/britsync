@@ -6,6 +6,7 @@ import { Paywall } from "@/components/paywall";
 import { Badge } from "@/components/ui/badge";
 import { notFound } from "next/navigation";
 import { Calendar, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { getSession } from "@/lib/auth";
 import { TimerPaywall } from "@/components/timer-paywall";
 import { ArticleActions } from "@/components/article-actions";
