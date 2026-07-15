@@ -7,7 +7,7 @@ import { promisify } from "util";
 
 const execPromise = promisify(exec);
 
-export async function POST(): Promise<Response> {
+export async function POST() {
     try {
         // Path to the python script
         const pythonScript = path.join(process.cwd(), "..", "news-automation", "app", "scheduler.py");
