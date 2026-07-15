@@ -135,7 +135,51 @@ class ImagePipeline:
             except (KeyError, TypeError) as e:
                 print(f"  Pexels: unexpected response - {e}")
 
+        # Keyless Fallback: Wikimedia Commons
+        if not image_urls:
+            image_urls = self.search_wikimedia(query)
+
         return image_urls
+
+    def search_wikimedia(self, query: str) -> list[str]:
+        """
+        Searches Wikimedia Commons using its keyless public MediaWiki API.
+        Returns a list of image URLs.
+        """
+        query = (query or "news").strip()
+        print(f"  [WIKIMEDIA] Searching Commons for: '{query}'")
+        url = "https://commons.wikimedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "search",
+            "gsrsearch": f"filetype:bitmap {query}",
+            "gsrnamespace": 6, # File namespace
+            "gsrlimit": 5,
+            "prop": "imageinfo",
+            "iiprop": "url",
+            "iiurlwidth": 800
+        }
+        
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                pages = data.get("query", {}).get("pages", {})
+                urls = []
+                for page_id, page in pages.items():
+                    imageinfo = page.get("imageinfo", [])
+                    if imageinfo:
+                        img_url = imageinfo[0].get("thumburl") or imageinfo[0].get("url")
+                        if img_url:
+                            urls.append(img_url)
+                return urls
+            else:
+                print(f"  Wikimedia: API error {response.status_code}")
+        except Exception as e:
+            print(f"  Wikimedia search failed: {e}")
+            
+        return []
 
     def download_and_optimize(self, url: str, save_path: str) -> bool:
         """
