@@ -20,8 +20,8 @@ def start_daily_automation():
     print("This script will run every 24 hours and publish news to your website.")
     print("Press Ctrl+C to stop.")
     
-    # Run every 24 hours (in seconds)
-    DAILY_INTERVAL = 24 * 60 * 60 
+    # Run every 4 hours (in seconds)
+    DAILY_INTERVAL = 4 * 60 * 60 
     
     try:
         while True:

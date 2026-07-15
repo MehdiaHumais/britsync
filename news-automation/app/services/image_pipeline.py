@@ -258,6 +258,6 @@ class ImagePipeline:
             print(f"  All downloads failed, using fallback.")
 
         # 5. Fallback
-        print(f"Using fallback image.")
-        return self._get_fallback_image()
+        print(f"Using dynamic CSS fallback placeholder on website.")
+        return None
 

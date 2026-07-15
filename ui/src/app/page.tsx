@@ -47,14 +47,7 @@ export default async function Home() {
               aiArticles.map((article: Article) => (
                 <div key={article.id} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
                   <Link href={`/article/${article.slug}`} className="block relative mb-6 overflow-hidden aspect-video bg-stone-100">
-                    {article.thumbnail ? (
-                      <SafeImage src={article.thumbnail} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-stone-50 border border-stone-200">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-300">Zyphra Matrix</div>
-                        <div className="w-8 h-[1px] bg-stone-200 mt-2" />
-                      </div>
-                    )}
+                    <SafeImage src={article.thumbnail || ""} alt={article.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     {article.isPremium && (
                       <div className="absolute top-4 right-4 bg-stone-900 text-white text-[10px] uppercase font-bold px-3 py-1 tracking-widest">
                         Premium
@@ -103,17 +96,11 @@ export default async function Home() {
             {lifestyleArticles.length > 0 ? (
               <>
                 <div className="lg:col-span-8 group relative overflow-hidden bg-stone-100">
-                  {lifestyleArticles[0].thumbnail ? (
-                    <SafeImage
-                      src={lifestyleArticles[0].thumbnail}
-                      alt={lifestyleArticles[0].title}
-                      className="w-full h-[600px] object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="w-full h-[600px] flex items-center justify-center bg-stone-50">
-                       <span className="text-xs font-bold uppercase tracking-[0.3em] text-stone-300">Feature Matrix</span>
-                    </div>
-                  )}
+                  <SafeImage
+                    src={lifestyleArticles[0].thumbnail || ""}
+                    alt={lifestyleArticles[0].title}
+                    className="w-full h-[600px] object-cover transition-transform duration-700 group-hover:scale-105"
+                  />
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors duration-500 flex flex-col justify-end p-8 text-white">
                     <Badge className="w-fit mb-4 bg-white text-black hover:bg-white uppercase tracking-widest text-[10px]">Lifestyle</Badge>
                     <h3 className="text-3xl md:text-5xl font-serif font-bold mb-4 max-w-2xl leading-tight">
@@ -131,13 +118,7 @@ export default async function Home() {
                   {lifestyleArticles.slice(1).map((article: Article) => (
                     <div key={article.id} className="grid grid-cols-3 gap-4 border-b border-stone-200 pb-8 last:border-0 group">
                       <Link href={`/article/${article.slug}`} className="col-span-1 overflow-hidden h-24 block bg-stone-100">
-                        {article.thumbnail ? (
-                          <SafeImage src={article.thumbnail} alt="" className="w-full h-full object-cover grayscale transition-all duration-500 group-hover:grayscale-0 group-hover:scale-110" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-stone-50 border border-stone-100">
-                            <span className="text-[8px] font-bold text-stone-300">Z.M.</span>
-                          </div>
-                        )}
+                        <SafeImage src={article.thumbnail || ""} alt={article.title} className="w-full h-full object-cover grayscale transition-all duration-500 group-hover:grayscale-0 group-hover:scale-110" />
                       </Link>
                       <div className="col-span-2">
                         <Link href={`/article/${article.slug}`}>
@@ -180,15 +161,9 @@ export default async function Home() {
                 worldNews.map((article: Article) => (
                   <div key={article.id} className="flex flex-col md:flex-row gap-8 group hover:translate-x-2 transition-all p-4 hover:bg-white/50 border-b border-stone-200 last:border-0">
                     <Link href={`/article/${article.slug}`} className="md:w-48 shrink-0 block">
-                      {article.thumbnail ? (
-                        <div className="overflow-hidden aspect-video md:aspect-square rounded-none border border-stone-200">
-                          <SafeImage src={article.thumbnail} alt={article.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                        </div>
-                      ) : (
-                        <div className="aspect-video md:aspect-square bg-stone-200 flex items-center justify-center text-[10px] text-stone-400 font-mono uppercase">
-                          No Matrix
-                        </div>
-                      )}
+                      <div className="overflow-hidden aspect-video md:aspect-square rounded-none border border-stone-200">
+                        <SafeImage src={article.thumbnail || ""} alt={article.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      </div>
                     </Link>
 
                     <div className="flex-1">

@@ -39,9 +39,9 @@ if __name__ == "__main__":
     print("Running first scrape now...")
     run_automation()
     while True:
-        next_run = datetime.now() + timedelta(hours=24)
+        next_run = datetime.now() + timedelta(hours=4)
         print(f"\nNext scrape at: {next_run.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("Waiting 24 hours until next run...")
-        time.sleep(86400)
+        print("Waiting 4 hours until next run...")
+        time.sleep(14400)
         print(f"\n=== Running scheduled scrape: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===")
         run_automation()
