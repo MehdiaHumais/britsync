@@ -43,19 +43,12 @@ export default async function SectionContent({ dataSection, displayTitle }: Sect
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {articles.map((article) => (
                             <Link key={article.id} href={`/article/${article.slug}`} className="border border-stone-200 p-6 flex flex-col group hover:shadow-2xl transition-shadow bg-white">
-                                <div className="relative mb-6 overflow-hidden aspect-video block bg-stone-100">
-                                    {article.thumbnail ? (
-                                        <SafeImage
-                                            src={article.thumbnail}
-                                            alt={article.title}
-                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center bg-stone-50 border border-stone-200">
-                                            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-300">Zyphra Matrix</div>
-                                            <div className="w-8 h-[1px] bg-stone-200 mt-2" />
-                                        </div>
-                                    )}
+                                <div className="relative mb-6 overflow-hidden aspect-video block bg-stone-100 border border-stone-100">
+                                    <SafeImage
+                                        src={article.thumbnail || ""}
+                                        alt={article.title}
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                    />
                                 </div>
                                 <h3 className="text-2xl font-serif font-bold mb-4 flex-1 leading-tight group-hover:text-stone-600 transition-colors">
                                     {article.title}
