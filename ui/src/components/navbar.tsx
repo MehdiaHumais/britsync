@@ -36,7 +36,6 @@ export async function Navbar() {
                         </div>
 
                         <Link href="/" className="flex items-center gap-3 group">
-                            <img src="/Screenshot_transparent.png" alt="BritSync Logo" className="h-8 w-8 object-contain" />
                             <h1 className="text-3xl font-serif font-black tracking-tighter">
                                 <span className="text-stone-400 group-hover:text-stone-900 transition-colors">The</span> <span className="italic">Zyphra</span>
                             </h1>
