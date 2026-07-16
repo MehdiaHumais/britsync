@@ -135,11 +135,59 @@ class ImagePipeline:
             except (KeyError, TypeError) as e:
                 print(f"  Pexels: unexpected response - {e}")
 
-        # Keyless Fallback: Wikimedia Commons
+        # Keyless Fallback 1: Wikipedia Page Images (highly relevant concept images)
+        if not image_urls:
+            image_urls = self.search_wikipedia(query)
+
+        # Keyless Fallback 2: Wikimedia Commons
         if not image_urls:
             image_urls = self.search_wikimedia(query)
 
         return image_urls
+
+    def search_wikipedia(self, query: str) -> list[str]:
+        """
+        Searches English Wikipedia for page articles matching the query,
+        and retrieves the original page image if it exists.
+        Returns a list containing the image URL if found, or empty list.
+        """
+        query = (query or "news").strip()
+        print(f"  [WIKIPEDIA] Searching Wikipedia for: '{query}'")
+        search_url = "https://en.wikipedia.org/w/api.php"
+        search_params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": query,
+            "format": "json",
+            "srlimit": 1
+        }
+        
+        try:
+            resp = self.session.get(search_url, params=search_params, timeout=10)
+            if resp.status_code == 200:
+                results = resp.json().get("query", {}).get("search", [])
+                if results:
+                    page_title = results[0]["title"]
+                    # Get page image URL
+                    image_params = {
+                        "action": "query",
+                        "prop": "pageimages",
+                        "piprop": "original",
+                        "titles": page_title,
+                        "format": "json"
+                    }
+                    resp2 = self.session.get(search_url, params=image_params, timeout=10)
+                    if resp2.status_code == 200:
+                        pages = resp2.json().get("query", {}).get("pages", {})
+                        for page_id, page in pages.items():
+                            original = page.get("original", {})
+                            img_url = original.get("source")
+                            if img_url:
+                                return [img_url]
+        except Exception as e:
+            print(f"  Wikipedia search failed: {e}")
+            
+        return []
 
     def search_wikimedia(self, query: str) -> list[str]:
         """
