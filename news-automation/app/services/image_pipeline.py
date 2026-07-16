@@ -86,9 +86,30 @@ class ImagePipeline:
             result = category if category else "news"
         return result
 
-    def search_images(self, query: str) -> list[str]:
+    def clean_title_for_search(self, title: str) -> list[str]:
+        # Lowercase and remove punctuation
+        title = title.lower()
+        title = re.sub(r"[^\w\s-]", "", title)
+        title = title.replace("-", " ")
+        
+        stop_words = {
+            "and", "the", "of", "to", "in", "for", "on", "with", "at", "by", "an", "a", 
+            "be", "should", "my", "so", "many", "these", "those", "who", "what", "where", 
+            "when", "why", "how", "is", "are", "was", "were", "this", "that", "it", "its", 
+            "from", "about", "against", "after", "before", "during", "into", "through", 
+            "over", "under", "again", "further", "then", "once", "here", "there", "all", 
+            "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", 
+            "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", 
+            "can", "will", "just", "don", "should", "now", "amid", "reportedly", "isnt", "arent"
+        }
+        
+        words = title.split()
+        cleaned_words = [w for w in words if w not in stop_words and len(w) > 1]
+        return cleaned_words
+
+    def search_images(self, query: str, title: str = None) -> list[str]:
         """
-        Searches for copyright-free images: Unsplash (primary), Pexels (fallback).
+        Searches for copyright-free images: Unsplash (primary), Pexels (fallback), Wikipedia (concept fallback).
         Returns a list of image URLs to download and store locally.
         """
         query = (query or "news").strip()
@@ -137,7 +158,7 @@ class ImagePipeline:
 
         # Keyless Fallback 1: Wikipedia Page Images (highly relevant concept images)
         if not image_urls:
-            image_urls = self.search_wikipedia(query)
+            image_urls = self.search_wikipedia(title or query)
 
         # Keyless Fallback 2: Wikimedia Commons
         if not image_urls:
@@ -145,48 +166,63 @@ class ImagePipeline:
 
         return image_urls
 
-    def search_wikipedia(self, query: str) -> list[str]:
+    def search_wikipedia(self, title: str) -> list[str]:
         """
-        Searches English Wikipedia for page articles matching the query,
-        and retrieves the original page image if it exists.
-        Returns a list containing the image URL if found, or empty list.
+        Searches English Wikipedia for page articles matching the query/title,
+        retrying with fewer words if necessary, and returns the first page image url.
         """
-        query = (query or "news").strip()
-        print(f"  [WIKIPEDIA] Searching Wikipedia for: '{query}'")
+        words = self.clean_title_for_search(title)
+        if not words:
+            return []
+            
         search_url = "https://en.wikipedia.org/w/api.php"
-        search_params = {
-            "action": "query",
-            "list": "search",
-            "srsearch": query,
-            "format": "json",
-            "srlimit": 1
+        headers = {
+            "User-Agent": "NewsAutomation/1.0 (https://www.britsync.co.uk; contact@britsync.co.uk)"
         }
         
-        try:
-            resp = self.session.get(search_url, params=search_params, timeout=10)
-            if resp.status_code == 200:
-                results = resp.json().get("query", {}).get("search", [])
-                if results:
-                    page_title = results[0]["title"]
-                    # Get page image URL
-                    image_params = {
-                        "action": "query",
-                        "prop": "pageimages",
-                        "piprop": "original",
-                        "titles": page_title,
-                        "format": "json"
-                    }
-                    resp2 = self.session.get(search_url, params=image_params, timeout=10)
-                    if resp2.status_code == 200:
-                        pages = resp2.json().get("query", {}).get("pages", {})
-                        for page_id, page in pages.items():
-                            original = page.get("original", {})
-                            img_url = original.get("source")
-                            if img_url:
-                                return [img_url]
-        except Exception as e:
-            print(f"  Wikipedia search failed: {e}")
-            
+        # Multi-stage fallback search: first 3 words, then first 2, then first 1
+        for n in [3, 2, 1]:
+            if len(words) >= n:
+                query = " ".join(words[:n])
+                print(f"  [WIKIPEDIA] Trying {n}-word search: '{query}'")
+                search_params = {
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": 10
+                }
+                
+                try:
+                    resp = self.session.get(search_url, params=search_params, headers=headers, timeout=10)
+                    if resp.status_code == 200:
+                        results = resp.json().get("query", {}).get("search", [])
+                        if results:
+                            # Batch query up to 10 titles to check for original images at once
+                            titles = "|".join([r["title"] for r in results])
+                            image_params = {
+                                "action": "query",
+                                "prop": "pageimages",
+                                "piprop": "original",
+                                "titles": titles,
+                                "format": "json"
+                            }
+                            resp2 = self.session.get(search_url, params=image_params, headers=headers, timeout=10)
+                            if resp2.status_code == 200:
+                                pages = resp2.json().get("query", {}).get("pages", {})
+                                # Keep the order of original search results
+                                for r in results:
+                                    t = r["title"]
+                                    for page_id, page in pages.items():
+                                        if page.get("title") == t:
+                                            original = page.get("original", {})
+                                            img_url = original.get("source")
+                                            if img_url:
+                                                print(f"  [WIKIPEDIA] Found image on page '{t}': {img_url}")
+                                                return [img_url]
+                except Exception as e:
+                    print(f"  Wikipedia search failed for '{query}': {e}")
+                    
         return []
 
     def search_wikimedia(self, query: str) -> list[str]:
@@ -339,7 +375,7 @@ class ImagePipeline:
         print(f"Searching images for '{title[:60]}...'")
 
         # 3. Search images
-        image_urls = self.search_images(keywords)
+        image_urls = self.search_images(keywords, title)
 
         if image_urls:
             # 4. Try downloading the first valid one
